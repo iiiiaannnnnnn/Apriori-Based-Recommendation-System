@@ -1,0 +1,110 @@
+═══════════════════════════════════════════════════════════════
+  An Apriori-Based Recommendation System for Identifying
+  Hidden Product Relationships and Optimizing Loss Leader
+  Pricing in Retail
+  ─────────────────────────────────────────────────────────
+  CS DM6 — Data Mining Methodologies  |  Topic 1: Item Sets
+  Dataset: Olist Brazilian E-Commerce (Kaggle)
+═══════════════════════════════════════════════════════════════
+
+WHAT THE SYSTEM DOES
+──────────────────────────────────────────────────────────────
+Each customer ORDER is treated as a market basket. Each
+PRODUCT CATEGORY is an item. The Apriori algorithm mines
+which categories are frequently bought together and generates
+association rules. Low-priced items that consistently drive
+purchases of higher-margin items are flagged as LOSS LEADERS.
+
+HOW TO RUN (Step-by-Step)
+──────────────────────────────────────────────────────────────
+1. Start server:  python flask_app.py
+2. Open browser:  http://127.0.0.1:5000
+3. Set data folder to the folder containing the 3 CSV files:
+     • olist_order_items_dataset.csv
+     • olist_products_dataset.csv
+     • product_category_name_translation.csv
+4. Adjust parameters if needed (defaults work well).
+5. Click  ▶ Run Apriori Analysis  (takes 15–40 seconds).
+6. Browse results across the tabs.
+7. For AI insights: click ⚙ Settings → paste Gemini API key
+   → Save → go to AI Insights tab → Generate Interpretations.
+
+PARAMETERS (sidebar)
+──────────────────────────────────────────────────────────────
+Min Support       0.003   How often the pair appears in all orders
+Min Confidence    0.30    How reliably B is bought when A is bought
+Min Lift          1.20    Association strength above random (>1 = real)
+Low Price %       25      Items below this price percentile = candidates
+Max Graph Rules   20      Top N rules shown in the network graph
+
+KEY METRICS
+──────────────────────────────────────────────────────────────
+Support      Frequency of item pair across all orders
+Confidence   P(B|A) — probability B bought given A was bought
+Lift         How much more likely than random (>1 good, >2 strong)
+Score        (confidence × lift × units_sold) ÷ (avg_price + 1)
+             Higher = stronger loss-leader candidate
+
+RESULTS TABS
+──────────────────────────────────────────────────────────────
+📋 Association Rules   All A→B rules passing thresholds, sorted by lift
+💸 Loss Leaders        Low-priced A items that lead to buying B
+💡 Recommendations     5 actionable strategies (Cross-Sell, Bundle, etc.)
+
+VISUALIZATIONS (Tabs 1–6)
+──────────────────────────────────────────────────────────────
+1 Frequent Itemsets    Bar chart — top category pairs by support
+2 Scatter Plot         Support vs Confidence, color/size = lift
+3 Network Graph        Directed graph of A→B rules, thickness = lift
+4 Association Heatmap  Lift values between top 10 category pairs
+5 Bubble Plot          Like scatter but bubble size = lift² (amplified)
+6 Parallel Coords      All 3 metrics on normalized axes, color = lift
+
+   Click any chart to zoom full-screen.
+
+LIFT BADGE COLORS (Rules Table)
+──────────────────────────────────────────────────────────────
+Blue   lift ≥ 2.0  Strong association
+Amber  lift ≥ 1.5  Moderate
+Pink   lift < 1.5  Weak but valid
+
+AI INSIGHTS (optional)
+──────────────────────────────────────────────────────────────
+• Requires a free Google Gemini API key (aistudio.google.com)
+• Click ⚙ Settings in the top bar → paste key → Save
+• Run analysis first, then go to AI Insights tab
+• Results are cached in the browser — survive page refresh
+• Use gemini-1.5-flash (default) for the best free quota
+
+PRESENTATION SCRIPT (2–3 min)
+──────────────────────────────────────────────────────────────
+"Our system applies the Apriori algorithm to Olist e-commerce
+transaction data — a public Kaggle dataset with over 100,000
+Brazilian online orders.
+
+Each order becomes a market basket, and each product category
+becomes an item. The algorithm discovers which categories are
+frequently bought together and measures the relationship using
+three metrics: Support (frequency), Confidence (reliability),
+and Lift (strength above chance).
+
+From these rules, we identify Loss Leaders — cheap items that
+reliably pull customers into buying higher-margin products.
+Retailers can use this to strategically discount those items.
+
+We built a Flask web application with six interactive
+visualizations and an AI interpretation layer using Google
+Gemini, which explains each chart in plain business language."
+
+EXPECTED OUTPUTS (per rubric)
+──────────────────────────────────────────────────────────────
+✓ List of frequent itemsets with support values       → Tab ①
+✓ Association rules with confidence and lift          → Tab 📋
+✓ Network graph of item associations                  → Tab ③
+✓ Additional: Scatter, Heatmap, Bubble, Parallel      → Tabs ②④⑤⑥
+✓ Loss leader pricing optimization                    → Tab 💸
+✓ Business recommendations                            → Tab 💡
+✓ AI-powered interpretation of all visualizations     → Tab 🤖
+
+═══════════════════════════════════════════════════════════════
+

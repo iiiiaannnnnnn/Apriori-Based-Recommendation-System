@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Apriori Loss Leader Discovery</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ══════════════════════════════════════════
+       HEADER
+  ══════════════════════════════════════════ -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div class="header-icon">🛒</div>
+        <div>
+          <div class="header-title">Apriori-Based Loss Leader Discovery Tool</div>
+          <div class="header-sub">Market basket analysis · Olist e-commerce · Association Rule Mining</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-badge">DM6 · Data Mining</div>
+        <button class="btn-header-settings" onclick="openSettings()" title="Gemini API Settings">⚙ Settings</button>
+      </div>
+    </div>
+    <div id="progress-bar"></div>
+  </header>
+
+  <!-- ══════════════════════════════════════════
+       APP BODY  (sidebar + main)
+  ══════════════════════════════════════════ -->
+  <div class="app-body">
+
+    <!-- ────────────────────────────────────────
+         SIDEBAR  (always visible, not collapsable)
+    ──────────────────────────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Settings -->
+      <div class="sb-section">
+        <div class="sb-title">⚙ Settings</div>
+
+        <div class="field">
+          <label for="data_folder">
+            📁 Data Folder
+            <span class="info-icon" data-tip="Folder with the 3 Olist CSV files">?</span>
+          </label>
+          <div style="display:flex;gap:5px">
+            <input id="data_folder" type="text" value="{{ default_data_folder }}"
+                   placeholder="C:\path\to\data" style="flex:1;min-width:0"/>
+            <button class="btn-browse" title="Browse folders" onclick="openFolderBrowser()">📂</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="min_support">
+            📈 Min Support
+            <span class="info-icon" data-tip="Min fraction of orders containing the itemset (0–1)">?</span>
+          </label>
+          <input id="min_support" type="number" step="0.001" min="0.001" value="0.003"/>
+        </div>
+
+        <div class="field">
+          <label for="min_confidence">
+            🎯 Min Confidence
+            <span class="info-icon" data-tip="P(B|A): likelihood of B given A was bought (0–1)">?</span>
+          </label>
+          <input id="min_confidence" type="number" step="0.05" min="0.01" max="1" value="0.30"/>
+        </div>
+
+        <div class="field">
+          <label for="min_lift">
+            🚀 Min Lift
+            <span class="info-icon" data-tip="Association strength vs random. Must be ≥ 1.">?</span>
+          </label>
+          <input id="min_lift" type="number" step="0.1" min="1" value="1.20"/>
+        </div>
+
+        <div class="field">
+          <label for="max_len">
+            📦 Max Itemset Size
+            <span class="info-icon" data-tip="Maximum number of items per itemset (2 = pairs, 3 = triples, etc.). Higher values find larger combos but are slower.">?</span>
+          </label>
+          <input id="max_len" type="number" step="1" min="2" max="10" value="3"/>
+        </div>
+
+        <div class="field">
+          <label for="low_price_percentile">
+            💰 Low Price Percentile
+            <span class="info-icon" data-tip="Items below this price percentile are flagged as loss-leader candidates">?</span>
+          </label>
+          <input id="low_price_percentile" type="number" step="1" min="1" max="100" value="25"/>
+        </div>
+
+        <div class="field">
+          <label for="graph_limit">
+            🕸️ Max Graph Rules
+            <span class="info-icon" data-tip="Top N rules shown in Network Graph (keep ≤ 30)">?</span>
+          </label>
+          <input id="graph_limit" type="number" step="1" min="1" value="20"/>
+        </div>
+      </div>
+
+      <!-- Run button -->
+      <div class="sb-section">
+        <button class="btn-run" id="run-btn" onclick="runAnalysis()">
+          ▶ Run Apriori Analysis
+        </button>
+      </div>
+
+      <!-- Export buttons -->
+      <div class="sb-section">
+        <div class="sb-title">⬇ Export</div>
+        <button class="btn-export" onclick="exportCSV('rules')">
+          📄 Export Rules CSV
+        </button>
+        <button class="btn-export" onclick="exportCSV('loss_leaders')">
+          💸 Export Loss Leaders CSV
+        </button>
+      </div>
+
+
+
+      <!-- Summary stats -->
+      <div class="sb-section" id="sb-stats">
+        <div class="sb-title">📊 Analysis Summary</div>
+        <p class="sb-placeholder" id="sb-placeholder">
+          Run the analysis to see results here.
+        </p>
+        <div class="stats-grid" id="stats-grid" style="display:none"></div>
+        <div id="top-rule-area"></div>
+      </div>
+
+    </aside><!-- /sidebar -->
+
+    <!-- ────────────────────────────────────────
+         MAIN CONTENT
+    ──────────────────────────────────────── -->
+    <main class="main-content">
+
+      <!-- Error banner -->
+      <div id="error-banner" class="error-banner">
+        <span>⚠</span>
+        <span id="error-msg">Error message</span>
+        <button class="error-close" onclick="hideError()">✕</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs-wrapper">
+        <div class="tab-bar">
+          <div class="tab-group-label">Results</div>
+          <button class="tab-btn active" onclick="switchTab('tab-rules',    this)">📋 Association Rules</button>
+          <button class="tab-btn"        onclick="switchTab('tab-loss',     this)">💸 Loss Leaders</button>
+          <button class="tab-btn"        onclick="switchTab('tab-itemsets-list', this)">📦 Frequent Itemsets</button>
+          <button class="tab-btn"        onclick="switchTab('tab-recs',     this)">💡 Recommendations</button>
+          <div class="tab-group-sep"></div>
+          <div class="tab-group-label">Visualizations</div>
+          <button class="tab-btn"        onclick="switchTab('tab-itemset',  this)"><span class="tab-num">1</span> Frequent Itemsets</button>
+          <button class="tab-btn"        onclick="switchTab('tab-scatter',  this)"><span class="tab-num">2</span> Scatter Plot</button>
+          <button class="tab-btn"        onclick="switchTab('tab-network',  this)"><span class="tab-num">3</span> Network Graph</button>
+          <button class="tab-btn"        onclick="switchTab('tab-heatmap',  this)"><span class="tab-num">4</span> Heatmap</button>
+          <button class="tab-btn"        onclick="switchTab('tab-bubble',   this)"><span class="tab-num">5</span> Bubble Plot</button>
+          <button class="tab-btn"        onclick="switchTab('tab-parallel', this)"><span class="tab-num">6</span> Parallel Coords</button>
+          <div class="tab-group-sep"></div>
+          <div class="tab-group-label">Intelligence</div>
+          <button class="tab-btn"        onclick="switchTab('tab-ai',       this)">🤖 AI Insights</button>
+          <div class="tab-group-sep"></div>
+          <div class="tab-group-label">Help</div>
+          <button class="tab-btn"        onclick="switchTab('tab-guide',    this)">📖 Guide</button>
+        </div>
+
+        <!-- Tab: Association Rules -->
+        <div id="tab-rules" class="tab-panel active">
+          <div class="table-scroll" id="tbl-rules">
+            <div class="chart-placeholder">No data yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab: Loss Leaders -->
+        <div id="tab-loss" class="tab-panel">
+          <div class="table-scroll" id="tbl-loss">
+            <div class="chart-placeholder">No data yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab: Frequent Itemsets (Results) -->
+        <div id="tab-itemsets-list" class="tab-panel">
+          <div id="itemset-table-area">
+            <div class="chart-placeholder">No data yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div id="tab-recs" class="tab-panel">
+          <div id="recs-container">
+            <div class="chart-placeholder">No data yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 1: Frequent Itemsets -->
+        <div id="tab-itemset" class="tab-panel">
+          <div class="chart-box" id="chart-itemset">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Scatter Plot -->
+        <div id="tab-scatter" class="tab-panel">
+          <div class="chart-box" id="chart-scatter">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Network Graph -->
+        <div id="tab-network" class="tab-panel">
+          <div class="legend-bar">
+            <div class="legend-item">
+              <div class="legend-dot" style="background:#0d47a1;border:2px solid #64b5f6"></div>
+              <span>Source node (antecedent)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-dot" style="background:#42a5f5;border:2px solid #90caf9"></div>
+              <span>Target-only node</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background:linear-gradient(90deg,#ffffcc,#fd8d3c,#bd0026)"></div>
+              <span>Edge color = confidence (yellow → red)</span>
+            </div>
+            <div class="legend-item">↗ Thicker edge = higher lift</div>
+            <div class="legend-item">🔍 Click chart to zoom</div>
+          </div>
+          <div class="chart-box" id="chart-network">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Association Heatmap -->
+        <div id="tab-heatmap" class="tab-panel">
+          <div class="chart-box" id="chart-heatmap">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 5: Bubble Plot -->
+        <div id="tab-bubble" class="tab-panel">
+          <div class="chart-box" id="chart-bubble">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- Tab 6: Parallel Coordinates -->
+        <div id="tab-parallel" class="tab-panel">
+          <div class="chart-box" id="chart-parallel">
+            <div class="chart-placeholder">No chart yet — click Run Apriori Analysis.</div>
+          </div>
+        </div>
+
+        <!-- AI Insights -->
+        <div id="tab-ai" class="tab-panel">
+          <div class="ai-toolbar">
+            <div id="ai-key-status" class="ai-key-badge ai-key-none">No API keys set</div>
+            <button class="btn-ai" id="btn-interpret" onclick="runInterpret()" disabled>
+              🤖 Generate AI Interpretations
+            </button>
+            <div id="ai-cache-status" class="ai-cache-badge" style="display:none"></div>
+            <div id="ai-loading" class="ai-loading-msg" style="display:none">⏳ Generating… (this may take 20–40 s)</div>
+          </div>
+          <div id="ai-insights-container" class="ai-grid">
+            <div class="chart-placeholder">Set API keys in the sidebar, run analysis, then click <strong>Generate AI Interpretations</strong>.</div>
+          </div>
+        </div>
+
+        <!-- Tab: Guide -->
+        <div id="tab-guide" class="tab-panel">
+          <div class="guide-body">
+
+            <div class="guide-card">
+              <h3>📦 Item A → Item B</h3>
+              <p>Association rule: customers who buy <strong>Item A</strong> are also likely to buy <strong>Item B</strong>.</p>
+            </div>
+            <div class="guide-card">
+              <h3>📈 Support</h3>
+              <p>Fraction of all orders containing both items. Higher = more common co-occurrence.</p>
+            </div>
+            <div class="guide-card">
+              <h3>🎯 Confidence</h3>
+              <p>P(B | A): probability of buying B given A was bought. Higher = more reliable rule.</p>
+            </div>
+            <div class="guide-card">
+              <h3>🚀 Lift</h3>
+              <p>How much more likely B is bought with A vs. by chance. Lift &gt; 1 = positive association.</p>
+            </div>
+            <div class="guide-card">
+              <h3>💸 Loss Leader</h3>
+              <p>A low-priced Item A with a strong rule toward Item B. Retailers discount A to drive traffic and capture margin on B.</p>
+            </div>
+            <div class="guide-card">
+              <h3>⭐ Loss Leader Score</h3>
+              <p>Composite: <code>(confidence × lift × units_sold) / (avg_price + 1)</code>. Higher = stronger candidate.</p>
+            </div>
+
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">1</span>Frequent Itemsets</h3>
+              <p>Horizontal bar chart of the most common category co-occurrences ranked by support.</p>
+            </div>
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">2</span>Scatter Plot</h3>
+              <p>Each point = one rule. X = support, Y = confidence. Color &amp; size encode lift.</p>
+            </div>
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">3</span>Network Graph</h3>
+              <p>Directed graph: arrows show A → B. Thicker edge = higher lift; color = confidence.</p>
+            </div>
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">4</span>Association Heatmap</h3>
+              <p>Grid of lift values for top 10 categories. Darker cell = stronger association.</p>
+            </div>
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">5</span>Bubble Plot</h3>
+              <p>Like Scatter Plot but bubble size = lift². Highlights the most valuable rules visually.</p>
+            </div>
+            <div class="guide-card">
+              <h3><span class="tab-num" style="margin-right:5px">6</span>Parallel Coordinates</h3>
+              <p>Each line = one rule across three normalized axes (support, confidence, lift). Color = lift.</p>
+            </div>
+
+            <div class="guide-recitation">
+              <strong>📢 Suggested Recitation Summary:</strong><br/>
+              This system applies the <strong>Apriori algorithm</strong> to Olist e-commerce transaction data,
+              treating each customer order as a market basket and each product category as an item.
+              It discovers categories frequently bought together and measures relationship strength using
+              <em>support</em> (frequency), <em>confidence</em> (reliability), and <em>lift</em> (strength above chance).
+              Low-priced antecedent categories that participate in strong rules are flagged as
+              <strong>possible loss-leader candidates</strong>. Six interactive visualizations — numbered 1 to 6 —
+              let analysts explore patterns from raw frequency to relationship topology to multi-metric comparison.
+            </div>
+
+          </div>
+        </div><!-- /tab-guide -->
+
+      </div><!-- /tabs-wrapper -->
+    </main><!-- /main-content -->
+
+  </div><!-- /app-body -->
+</div><!-- /app-shell -->
+
+<!-- Settings Modal -->
+<div id="settings-modal" onclick="handleSettingsBackdrop(event)">
+  <div class="settings-modal-box">
+    <div class="settings-modal-header">
+      <div class="settings-modal-title">
+        <span class="settings-icon">⚙</span>
+        <span>Gemini API Settings</span>
+      </div>
+      <button class="settings-modal-close" onclick="closeSettings()" title="Close">✕</button>
+    </div>
+    <div class="settings-modal-body">
+      <div class="settings-field">
+        <label for="api-keys">
+          API Keys
+          <span class="settings-tip">One key per line — add 2–3 to rotate on quota limits</span>
+        </label>
+        <textarea id="api-keys" rows="5"
+          placeholder="AIzaSy...&#10;AIzaSy...&#10;AIzaSy..."
+          spellcheck="false"></textarea>
+      </div>
+      <div class="settings-field">
+        <label for="model-select">
+          Model
+          <span class="settings-tip">gemini-1.5-flash has the most generous free quota</span>
+        </label>
+        <select id="model-select">
+          <option value="gemini-1.5-flash" selected>gemini-1.5-flash — recommended (separate quota)</option>
+          <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b — fastest, lowest quota</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash — newer, shared quota</option>
+          <option value="gemini-2.5-flash">gemini-2.5-flash — latest, shared quota</option>
+        </select>
+      </div>
+      <div class="settings-actions">
+        <button class="btn-settings-save" onclick="setApiKeys()">🔑 Save API Keys</button>
+        <div id="key-status" class="settings-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Folder Browser Modal -->
+<div id="folder-modal">
+  <div class="folder-modal-box">
+    <div class="folder-modal-header">
+      <span class="folder-modal-title">📂 Select Data Folder</span>
+      <button class="folder-modal-close" onclick="closeFolderBrowser()">✕</button>
+    </div>
+    <div class="folder-current-path" id="folder-current-path">Loading…</div>
+    <div class="folder-list" id="folder-list"></div>
+    <div class="folder-modal-footer">
+      <button class="btn-select-folder" onclick="selectCurrentFolder()">✅ Use This Folder</button>
+      <button class="btn-folder-cancel" onclick="closeFolderBrowser()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner-ring"></div>
+  <div class="loading-label">Running Apriori Analysis…
+    <div class="loading-sub">This may take 15–40 seconds depending on data size.</div>
+  </div>
+</div>
+
+<!-- Image lightbox -->
+<div id="img-modal" onclick="closeModal()">
+  <button id="img-modal-close" onclick="closeModal()">✕</button>
+  <img id="img-modal-img" src="" alt="Full-size chart"/>
+</div>
+
+<!-- Toast -->
+<div id="toast"><span id="toast-msg"></span></div>
+
+<!-- ══════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════ -->
+<script>
+// ─── State ─────────────────────────────────────────────
+let lastRules         = [];
+let lastLossLeaders   = [];
+let _lastAnalysisData = null;
+let _rotatorKeysSet   = false;
+
+// ─── Tab switching ──────────────────────────────────────
+function switchTab(tabId, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById(tabId);
+  panel.classList.add('active');
+  panel.style.animation = 'none';
+  panel.offsetHeight;           // force reflow to restart animation
+  panel.style.animation = '';
+  btn.classList.add('active');
+  btn.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'nearest' });
+}
+
+// ─── Run Analysis ───────────────────────────────────────
+async function runAnalysis() {
+  const params = {
+    data_folder:          document.getElementById('data_folder').value.trim(),
+    min_support:          parseFloat(document.getElementById('min_support').value),
+    min_confidence:       parseFloat(document.getElementById('min_confidence').value),
+    min_lift:             parseFloat(document.getElementById('min_lift').value),
+    max_len:              parseInt(document.getElementById('max_len').value, 10),
+    low_price_percentile: parseFloat(document.getElementById('low_price_percentile').value),
+    graph_limit:          parseInt(document.getElementById('graph_limit').value),
+  };
+
+  if (!params.data_folder)                                         { showError('Data folder path is required.'); return; }
+  if (params.min_support <= 0)                                     { showError('Min Support must be > 0.'); return; }
+  if (params.min_confidence <= 0 || params.min_confidence > 1)    { showError('Min Confidence must be 0 < value ≤ 1.'); return; }
+  if (params.min_lift < 1)                                         { showError('Min Lift must be ≥ 1.'); return; }
+  if (params.low_price_percentile < 1 || params.low_price_percentile > 100) { showError('Low Price Percentile must be 1–100.'); return; }
+  if (params.graph_limit < 1)                                      { showError('Graph limit must be ≥ 1.'); return; }
+
+  hideError();
+  showLoading();
+
+  // kick off progress bar
+  const pb = document.getElementById('progress-bar');
+  pb.classList.remove('running');
+  pb.offsetHeight;
+  pb.classList.add('running');
+
+  try {
+    const resp = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text();
+      showError(`Server error ${resp.status}: ${txt.substring(0, 200)}`);
+      return;
+    }
+
+    const data = await resp.json();
+    if (!data.ok) { showError(data.error || 'Analysis failed.'); return; }
+
+    lastRules       = data.rules        || [];
+    lastLossLeaders = data.loss_leaders || [];
+    _lastAnalysisData = data;
+
+    renderSidebarStats(data.summary);
+    renderRecommendations(data.recommendations || []);
+
+    // Enable AI interpret button if keys were already set
+    if (_rotatorKeysSet) {
+      document.getElementById('btn-interpret').disabled = false;
+    }
+
+    renderTable('tbl-rules', lastRules,
+      ['Item A','Item B','support','confidence','lift']);
+    renderTable('tbl-loss', lastLossLeaders,
+      ['Item A','Item B','average_price','total_units_sold','support','confidence','lift','loss_leader_score']);
+
+    setChart('chart-itemset',  data.charts.itemset);
+    renderItemsetsTable(data.itemsets_data || []);
+    setChart('chart-scatter',  data.charts.scatter);
+    setChart('chart-network',  data.charts.network);
+    setChart('chart-heatmap',  data.charts.heatmap);
+    setChart('chart-bubble',   data.charts.bubble);
+    setChart('chart-parallel', data.charts.parallel);
+
+    showToast(`Done! ${lastRules.length} rules found.`);
+
+  } catch (err) {
+    showError('Network or server error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── Sidebar stats ──────────────────────────────────────
+function renderSidebarStats(s) {
+  document.getElementById('sb-placeholder').style.display = 'none';
+
+  const chips = [
+    { e:'📦', lbl:'Records',           val: s.total_records?.toLocaleString() },
+    { e:'🛒', lbl:'Orders',            val: s.unique_orders?.toLocaleString() },
+    { e:'🏷️', lbl:'Categories',        val: s.unique_categories },
+    { e:'🧺', lbl:'Basket Orders',     val: s.basket_orders?.toLocaleString() },
+    { e:'📊', lbl:'Frequent Itemsets', val: s.frequent_itemsets },
+    { e:'🔗', lbl:'Rules Found',       val: s.association_rules },
+    { e:'💰', lbl:'Price Cutoff',      val: s.low_price_cutoff },
+    { e:'🌟', lbl:'Loss Leaders',      val: s.loss_leaders },
+    { e:'🕸️', lbl:'Graph Rules',       val: s.graph_rules },
+  ].filter(c => c.val !== undefined && c.val !== null);
+
+  const grid = document.getElementById('stats-grid');
+  grid.style.display = 'grid';
+  grid.innerHTML = chips.map((c, i) =>
+    `<div class="stat-chip${i === chips.length-1 && chips.length % 2 !== 0 ? ' stat-chip-wide' : ''}"
+          style="animation-delay:${i*40}ms">
+      <span class="sc-ico">${c.e}</span>
+      <span class="sc-val">${c.val}</span>
+      <span class="sc-lbl">${c.lbl}</span>
+    </div>`
+  ).join('');
+
+  const area = document.getElementById('top-rule-area');
+  area.innerHTML = s.top_rule
+    ? `<div class="top-rule-banner">🏆 <strong>Strongest rule:</strong><br/>${escHtml(s.top_rule)}</div>`
+    : '';
+}
+
+// ─── Frequent Itemsets table (grouped by size) ──────────
+function renderItemsetsTable(isets) {
+  const el = document.getElementById('itemset-table-area');
+  if (!isets || !isets.length) { el.innerHTML = ''; return; }
+
+  // Group by item_count
+  const groups = {};
+  isets.forEach(it => {
+    const k = it.item_count;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(it);
+  });
+
+  const sizeLabel = n => n === 1 ? '1-Itemsets (Single Category)'
+                       : n === 2 ? '2-Itemsets (Category Pairs)'
+                       : `${n}-Itemsets (${n}-Category Combinations)`;
+
+  let html = `<div class="iset-table-header">
+    <span class="iset-table-title">📋 Frequent Itemsets — Full List with Support Values</span>
+    <span class="iset-table-total">${isets.length} total itemsets</span>
+  </div>`;
+
+  Object.keys(groups).sort((a,b) => a-b).forEach(size => {
+    const rows = groups[size];
+    html += `<div class="iset-group">
+      <div class="iset-group-hdr">
+        <span class="iset-size-badge">${size}-item</span>
+        <span>${sizeLabel(parseInt(size))}</span>
+        <span class="iset-group-count">${rows.length} itemset${rows.length>1?'s':''}</span>
+      </div>
+      <div class="table-scroll" style="max-height:260px">
+        <table>
+          <thead><tr>
+            <th>#</th>
+            <th>Itemset (Categories)</th>
+            <th style="width:110px">Support</th>
+            <th style="width:120px">Support %</th>
+          </tr></thead>
+          <tbody>`;
+    rows.forEach((it, i) => {
+      const pct = (it.support * 100).toFixed(3);
+      const barW = Math.min(Math.round(it.support / isets[0].support * 100), 100);
+      html += `<tr style="animation-delay:${Math.min(i,30)*15}ms">
+        <td style="color:var(--text-muted);font-size:.75rem">${i+1}</td>
+        <td><strong>${escHtml(it.itemset_label)}</strong></td>
+        <td style="font-family:monospace;font-size:.82rem">${it.support.toFixed(4)}</td>
+        <td>
+          <div class="iset-bar-wrap">
+            <div class="iset-bar" style="width:${barW}%"></div>
+            <span class="iset-bar-label">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// ─── Render table ───────────────────────────────────────
+function renderTable(containerId, rows, cols) {
+  const el = document.getElementById(containerId);
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="chart-placeholder">No results to display.</div>';
+    return;
+  }
+
+  const liftBadge = lift => {
+    if (lift === null || lift === undefined) return '';
+    const v   = parseFloat(lift);
+    const cls = v >= 2 ? 'badge-high' : v >= 1.5 ? 'badge-mid' : 'badge-low';
+    return `<span class="tbl-badge ${cls}">${v.toFixed(3)}</span>`;
+  };
+  const fmt = (c, v) => {
+    if (c === 'lift')              return liftBadge(v);
+    if (c === 'Item A' || c === 'Item B') return `<strong>${escHtml(v ?? '')}</strong>`;
+    if (typeof v === 'number')     return v.toFixed(4);
+    return escHtml(String(v ?? ''));
+  };
+
+  let html = '<table><thead><tr>';
+  cols.forEach(c => { html += `<th>${escHtml(c)}</th>`; });
+  html += '</tr></thead><tbody>';
+  rows.forEach((row, i) => {
+    html += `<tr style="animation-delay:${Math.min(i,30)*18}ms">`;
+    cols.forEach(c => { html += `<td>${fmt(c, row[c])}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// ─── Set chart image ────────────────────────────────────
+function setChart(containerId, b64) {
+  const el = document.getElementById(containerId);
+  if (!b64) {
+    el.innerHTML = '<div class="chart-placeholder">Not enough data to render this chart.</div>';
+    return;
+  }
+  const img = document.createElement('img');
+  img.src   = 'data:image/png;base64,' + b64;
+  img.alt   = 'chart';
+  img.title = 'Click to zoom';
+  img.addEventListener('click', () => openModal(img.src));
+  el.innerHTML = '';
+  el.appendChild(img);
+}
+
+// ─── Lightbox ───────────────────────────────────────────
+function openModal(src) {
+  document.getElementById('img-modal-img').src = src;
+  document.getElementById('img-modal').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('img-modal').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeSettings(); closeFolderBrowser(); }
+});
+
+// ─── Export CSV ─────────────────────────────────────────
+function exportCSV(type) {
+  const rows = type === 'rules' ? lastRules : lastLossLeaders;
+  if (!rows || rows.length === 0) { showToast('No data to export. Run analysis first.'); return; }
+  const cols  = Object.keys(rows[0]);
+  const lines = [cols.join(',')];
+  rows.forEach(row => {
+    lines.push(cols.map(c => {
+      const v = String(row[c] ?? '');
+      return (v.includes(',') || v.includes('"')) ? `"${v.replace(/"/g,'""')}"` : v;
+    }).join(','));
+  });
+  const a = Object.assign(document.createElement('a'), {
+    href:     URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })),
+    download: type === 'rules' ? 'apriori_rules.csv' : 'loss_leaders.csv'
+  });
+  a.click();
+  showToast(`Exported ${rows.length} rows.`);
+}
+
+// ─── UI helpers ─────────────────────────────────────────
+function showLoading()  { document.getElementById('loading-overlay').classList.add('visible'); }
+function hideLoading()  { document.getElementById('loading-overlay').classList.remove('visible'); }
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  document.getElementById('error-banner').classList.add('visible');
+}
+function hideError()    { document.getElementById('error-banner').classList.remove('visible'); }
+
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  el.classList.add('visible');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('visible'), 3200);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Settings Modal ────────────────────────────────────
+function openSettings() {
+  document.getElementById('settings-modal').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+function handleSettingsBackdrop(e) {
+  if (e.target === document.getElementById('settings-modal')) closeSettings();
+}
+
+// ─── API Keys ───────────────────────────────────────────
+async function setApiKeys() {
+  const raw   = document.getElementById('api-keys').value.trim();
+  const keys  = raw.split('\n').filter(k => k.trim());
+  const model = document.getElementById('model-select').value;
+  if (!keys.length) { showToast('Enter at least one API key.'); return; }
+  try {
+    const resp = await fetch('/set-keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys, model })
+    });
+    const data = await resp.json();
+    const statusEl = document.getElementById('key-status');
+    const badgeEl  = document.getElementById('ai-key-status');
+    if (data.ok) {
+      const n   = data.count;
+      const pkg = data.gemini_package;
+      const mdl = data.model || model;
+      const msg = `✓ ${n} key${n>1?'s':''} saved · ${mdl}`;
+      statusEl.textContent = msg;
+      statusEl.className   = 'settings-status ' + (pkg ? 'settings-status-ok' : 'settings-status-warn');
+      badgeEl.textContent  = `${n} key${n>1?'s':''} ready`;
+      badgeEl.className    = 'ai-key-badge ai-key-ready';
+      _rotatorKeysSet = pkg;
+      if (_lastAnalysisData && pkg) {
+        document.getElementById('btn-interpret').disabled = false;
+      }
+      showToast(`${n} Gemini key${n>1?'s':''} saved — ${mdl}.`);
+      setTimeout(closeSettings, 900);
+    }
+  } catch(err) { showError('Failed to set keys: ' + err.message); }
+}
+
+// ─── AI Interpretations ──────────────────────────────────
+async function runInterpret() {
+  if (!_lastAnalysisData) { showToast('Run analysis first.'); return; }
+  const loadEl   = document.getElementById('ai-loading');
+  const btnEl    = document.getElementById('btn-interpret');
+  const contEl   = document.getElementById('ai-insights-container');
+  const cacheEl  = document.getElementById('ai-cache-status');
+  loadEl.style.display  = 'block';
+  btnEl.disabled = true;
+  cacheEl.style.display = 'none';
+  contEl.innerHTML = '<div class="chart-placeholder">⏳ Generating AI interpretations…</div>';
+  try {
+    const resp = await fetch('/interpret', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_lastAnalysisData)
+    });
+    const data = await resp.json();
+    if (!data.ok) { showError(data.error); return; }
+    renderAIInsights(data.interpretations);
+    // Save to localStorage for presentation cache
+    try {
+      const cacheKey = _aiCacheKey();
+      localStorage.setItem('ai_cache', JSON.stringify({
+        key: cacheKey,
+        interpretations: data.interpretations,
+        timestamp: Date.now()
+      }));
+    } catch(e) { /* storage full or unavailable */ }
+    showCacheBadge(Date.now());
+    showToast('AI interpretations ready!');
+  } catch(err) { showError('AI error: ' + err.message); }
+  finally {
+    loadEl.style.display = 'none';
+    btnEl.disabled = !_rotatorKeysSet;
+  }
+}
+
+// ─── AI Cache helpers ────────────────────────────────────
+function _aiCacheKey() {
+  if (!_lastAnalysisData || !_lastAnalysisData.summary) return '';
+  const s = _lastAnalysisData.summary;
+  return `${s.total_records}|${s.unique_orders}|${s.association_rules}`;
+}
+
+function showCacheBadge(ts) {
+  const el = document.getElementById('ai-cache-status');
+  const dt = new Date(ts).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  el.textContent  = `💾 Cached · ${dt}`;
+  el.style.display = 'inline-flex';
+}
+
+function loadCachedInsights() {
+  try {
+    const raw = localStorage.getItem('ai_cache');
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (!cached || !cached.interpretations) return;
+    // Only restore if analysis matches current data (or no analysis yet)
+    const currentKey = _aiCacheKey();
+    if (currentKey && cached.key && currentKey !== cached.key) return;
+    renderAIInsights(cached.interpretations);
+    showCacheBadge(cached.timestamp);
+    showToast('Restored cached AI insights.');
+  } catch(e) { /* corrupt cache */ }
+}
+
+const AI_LABELS = {
+  itemsets: '① Frequent Itemsets', scatter:  '② Scatter Plot',
+  network:  '③ Network Graph',     heatmap:  '④ Association Heatmap',
+  bubble:   '⑤ Bubble Plot',        parallel: '⑥ Parallel Coordinates',
+  overall:  '📋 Overall Summary & Loss Leaders'
+};
+
+function renderAIInsights(interps) {
+  let html = '';
+  for (const [key, text] of Object.entries(interps)) {
+    html += `<div class="ai-card">
+      <div class="ai-card-hdr">${AI_LABELS[key] || key}</div>
+      <div class="ai-card-body">${escHtml(text)}</div>
+    </div>`;
+  }
+  document.getElementById('ai-insights-container').innerHTML =
+    html || '<p>No interpretations returned.</p>';
+}
+
+// ─── Recommendations ──────────────────────────────────────
+function renderRecommendations(recs) {
+  const el = document.getElementById('recs-container');
+  if (!recs || !recs.length) {
+    el.innerHTML = '<div class="chart-placeholder">No recommendations generated — try lowering thresholds.</div>';
+    return;
+  }
+  const catIcon = c => ({
+    'Cross-Sell':'🔗','Loss Leader':'💸','Bundle':'🎁',
+    'Inventory':'📦','Multi-Bundle':'🛍️'
+  }[c] || '💡');
+  const prioClass = p => p === 'High' ? 'rec-high' : p === 'Medium' ? 'rec-mid' : 'rec-low';
+  let html = '<div class="recs-grid">';
+  recs.forEach((r, i) => {
+    const mc = Object.entries(r.metrics || {})
+      .map(([k,v]) => `<span class="rec-metric">${k}: ${v}</span>`).join('');
+    html += `<div class="rec-card" style="animation-delay:${i*30}ms">
+      <div class="rec-card-hdr">
+        <span class="rec-cat ${prioClass(r.priority)}">${catIcon(r.category)} ${escHtml(r.category)}</span>
+        <span class="rec-prio rec-prio-${prioClass(r.priority)}">${escHtml(r.priority)}</span>
+      </div>
+      <div class="rec-action">${escHtml(r.action)}</div>
+      <div class="rec-why">${escHtml(r.why)}</div>
+      <div class="rec-metrics-row">${mc}</div>
+    </div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ─── Folder Browser ──────────────────────────────────────
+let _browserCurrentPath = '';
+
+async function openFolderBrowser() {
+  const startPath = document.getElementById('data_folder').value.trim() || '';
+  document.getElementById('folder-modal').style.display = 'flex';
+  await browsePath(startPath);
+}
+
+async function browsePath(path) {
+  try {
+    const resp = await fetch('/browse?path=' + encodeURIComponent(path));
+    const data = await resp.json();
+    if (!data.ok) { showToast('Cannot open: ' + data.error); return; }
+    _browserCurrentPath = data.current;
+    document.getElementById('folder-current-path').textContent = data.current;
+    let html = '';
+    if (data.parent) {
+      html += `<div class="folder-item folder-up" onclick="browsePath(${JSON.stringify(data.parent)})">⬆ ..</div>`;
+    }
+    (data.items || []).forEach(item => {
+      if (item.is_dir) {
+        html += `<div class="folder-item" onclick="browsePath(${JSON.stringify(item.path)})">📁 ${escHtml(item.name)}</div>`;
+      } else {
+        html += `<div class="folder-item folder-file">📄 ${escHtml(item.name)}</div>`;
+      }
+    });
+    document.getElementById('folder-list').innerHTML =
+      html || '<div style="padding:12px;color:#aaa">Empty folder</div>';
+  } catch(err) { showToast('Browse error: ' + err.message); }
+}
+
+function selectCurrentFolder() {
+  document.getElementById('data_folder').value = _browserCurrentPath;
+  closeFolderBrowser();
+  showToast('Folder selected.');
+}
+
+function closeFolderBrowser() {
+  document.getElementById('folder-modal').style.display = 'none';
+}
+
+// ─── Page init ───────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore cached AI insights on page load for presentation continuity
+  loadCachedInsights();
+});
+</script>
+</body>
+</html>
