@@ -424,9 +424,8 @@ def _fmt_rules(rules_list: list, n: int = 10) -> str:
 
 def interpret_chunks(analysis_data: dict) -> dict:
     """
-    Send 7 small focused prompts to Gemini (rotating API keys).
-    Each chunk covers one visualisation to save tokens.
-    Returns dict: {key: interpretation_string}.
+    Send 4 focused prompts to Gemini (reduced from 7 to save API quota).
+    Each chunk covers related visualizations. Returns dict: {key: interpretation_string}.
     """
     from collections import Counter
     s     = analysis_data["summary"]
@@ -439,57 +438,57 @@ def interpret_chunks(analysis_data: dict) -> dict:
         f"{cnt}\u00d7{sz}-item" for sz, cnt in sorted(size_dist.items())
     )
     top_isets = "\n".join(
-        f"  {it['itemset_label']} (size {it['item_count']}, sup={it['support']:.4f})"
-        for it in isets[:8]
+        f"  {it['itemset_label']} (sup={it['support']:.3f})"
+        for it in isets[:5]  # Reduced from 8 to 5
     ) or "  (none)"
 
     by_lift = sorted(rules, key=lambda r: r["lift"], reverse=True)
     ctx = (
-        f"Olist e-commerce Apriori: {s['basket_orders']} orders, "
+        f"Olist e-commerce: {s['basket_orders']} orders, "
         f"{s['unique_categories']} categories, {s['association_rules']} rules. "
-        f"Reply in 3\u20134 concise sentences. No bullet points."
+        f"Reply in 2-3 concise sentences."
     )
 
+    # Combine similar visualizations to reduce API calls from 7 to 4
     chunks = [
         {"key": "itemsets",
-         "prompt": (f"{ctx}\n\nInterpret the Frequent Itemsets chart (Tab 1):\n"
-                    f"Size distribution: {size_text}\nTop itemsets:\n{top_isets}\n"
-                    f"What buying patterns do these reveal? Note any 3+ itemsets.")},
+         "prompt": (f"{ctx}\n\nFrequent Itemsets: {size_text}\nTop 5:\n{top_isets}\n"
+                    f"Key patterns?")},
         {"key": "scatter",
-         "prompt": (f"{ctx}\n\nInterpret the Scatter Plot (Tab 2, X=support, Y=confidence, size=lift):\n"
-                    f"Top rules:\n{_fmt_rules(rules, 8)}\n"
-                    f"Where do the best rules cluster? What does the spread suggest?")},
+         "prompt": (f"{ctx}\n\nScatter Plot (support vs confidence):\n"
+                    f"{_fmt_rules(rules, 4)}\n"  # Reduced from 8 to 4
+                    f"Pattern insights?")},
         {"key": "network",
-         "prompt": (f"{ctx}\n\nInterpret the Network Graph (Tab 3, nodes=categories, arrows=rules, thickness=lift):\n"
-                    f"Top rules by lift:\n{_fmt_rules(by_lift, 6)}\n"
-                    f"Which categories are hubs? What does the topology suggest?")},
-        {"key": "heatmap",
-         "prompt": (f"{ctx}\n\nInterpret the Association Heatmap (Tab 4, cells=lift between category pairs):\n"
-                    f"Strongest pairs:\n{_fmt_rules(by_lift, 5)}\n"
-                    f"What combinations have the strongest mutual association?")},
-        {"key": "bubble",
-         "prompt": (f"{ctx}\n\nInterpret the Bubble Plot (Tab 5, X=support, Y=confidence, size=lift\u00b2):\n"
-                    f"Top by lift:\n{_fmt_rules(by_lift, 5)}\n"
-                    f"How does bubble size help identify high-value rules?")},
-        {"key": "parallel",
-         "prompt": (f"{ctx}\n\nInterpret the Parallel Coordinates chart (Tab 6, axes: support | confidence | lift, normalised):\n"
-                    f"Top rules:\n{_fmt_rules(rules, 6)}\n"
-                    f"What trade-offs between metrics are visible? Are there clusters?")},
+         "prompt": (f"{ctx}\n\nNetwork & Heatmap (category associations):\n"
+                    f"{_fmt_rules(by_lift, 4)}\n"  # Reduced from 6 to 4, combines network+heatmap
+                    f"Hub categories and strongest links?")},
         {"key": "overall",
-         "prompt": (f"{ctx}\n\nOverall summary \u2014 loss leaders:\n"
-                    f"{_fmt_rules(ll, 5) if ll else '  (none found)'}\n"
-                    f"Price cutoff: R${s['low_price_cutoff']} \u00b7 {s['loss_leaders']} candidates.\n"
-                    f"Give: (1) most actionable finding, "
-                    f"(2) top loss-leader to prioritise, "
-                    f"(3) one concrete business strategy recommendation.")},
+         "prompt": (f"{ctx}\n\nLoss Leaders:\n"
+                    f"{_fmt_rules(ll, 3) if ll else '(none)'}\n"  # Reduced from 5 to 3
+                    f"Cutoff: R${s['low_price_cutoff']}, {s['loss_leaders']} candidates.\n"
+                    f"Top actionable recommendation?")},
     ]
 
     results = {}
+    # Fill in missing keys with combined results
+    results["bubble"] = ""     # Will use scatter interpretation
+    results["parallel"] = ""   # Will use scatter interpretation
+    results["heatmap"] = ""    # Will use network interpretation
+    
     for chunk in chunks:
         try:
             results[chunk["key"]] = _rotator.call(chunk["prompt"])
         except Exception as exc:
             results[chunk["key"]] = f"[Unavailable: {exc}]"
+    
+    # Copy scatter interpretation to bubble and parallel
+    if results.get("scatter"):
+        results["bubble"] = results["scatter"]
+        results["parallel"] = results["scatter"]
+    # Copy network interpretation to heatmap
+    if results.get("network"):
+        results["heatmap"] = results["network"]
+    
     return results
 
 
