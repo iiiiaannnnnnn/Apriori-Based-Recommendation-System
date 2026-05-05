@@ -145,7 +145,7 @@ MIT License (or specify your license)
 
 ## Contributors
 
-- [Your Team Members]
+- []
 
 ## Acknowledgments
 
