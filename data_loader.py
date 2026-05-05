@@ -138,6 +138,44 @@ def _load_merged_product_dataset(csv_paths):
     return None
 
 
+def _load_transaction_format(path):
+    """Load CSV where each row contains comma-separated items (transaction format)."""
+    try:
+        transactions = []
+        with open(path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if line:
+                    items = [item.strip() for item in line.split(',') if item.strip()]
+                    if items:
+                        for item in items:
+                            transactions.append({
+                                'order_id': f"transaction_{line_num}",
+                                'item_name': item,
+                                'price': 1.0,
+                                'quantity': 1.0,
+                                'order_item_id': f"{path.name}:{line_num}:{item}"
+                            })
+        return pd.DataFrame(transactions)
+    except UnicodeDecodeError:
+        transactions = []
+        with open(path, 'r', encoding='latin1') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if line:
+                    items = [item.strip() for item in line.split(',') if item.strip()]
+                    if items:
+                        for item in items:
+                            transactions.append({
+                                'order_id': f"transaction_{line_num}",
+                                'item_name': item,
+                                'price': 1.0,
+                                'quantity': 1.0,
+                                'order_item_id': f"{path.name}:{line_num}:{item}"
+                            })
+        return pd.DataFrame(transactions)
+
+
 def load_transaction_data(data_dir):
     data_dir = Path(data_dir)
     if not data_dir.exists():
@@ -155,6 +193,7 @@ def load_transaction_data(data_dir):
     if merged is not None and not merged.empty:
         return merged
 
+    # Try traditional format first
     single_file_matches = []
     for path in csv_paths:
         df = _read_csv(path)
@@ -169,9 +208,25 @@ def load_transaction_data(data_dir):
     if single_file_matches:
         return pd.concat(single_file_matches, ignore_index=True)
 
-    supported = (
-        "Could not detect transaction columns. Provide CSV data with an order "
-        "column such as order_id/invoice/transaction_id and an item column such "
-        "as item_name/product/category/description. A price column is optional."
+    # Try transaction format (each line = one transaction with comma-separated items)
+    transaction_matches = []
+    for path in csv_paths:
+        try:
+            transaction_df = _load_transaction_format(path)
+            if not transaction_df.empty:
+                transaction_matches.append(transaction_df)
+        except Exception:
+            continue
+
+    if transaction_matches:
+        return pd.concat(transaction_matches, ignore_index=True)
+
+    # Clean, helpful error message
+    error_msg = (
+        "Unable to load data. The system supports these formats:\n"
+        "1. Traditional format: CSV with order_id, item_name columns (price/quantity optional)\n"
+        "2. Transaction format: CSV where each line contains comma-separated items\n"
+        "3. Olist format: Standard Olist dataset files\n\n"
+        f"Files found: {[p.name for p in csv_paths]}"
     )
-    raise ValueError(supported)
+    raise ValueError(error_msg)
