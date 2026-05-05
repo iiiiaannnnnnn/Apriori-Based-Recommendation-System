@@ -759,9 +759,8 @@ async function setApiKeys() {
       badgeEl.textContent  = `${n} key${n>1?'s':''} ready`;
       badgeEl.className    = 'ai-key-badge ai-key-ready';
       _rotatorKeysSet = pkg;
-      if (_lastAnalysisData && pkg) {
-        document.getElementById('btn-interpret').disabled = false;
-      }
+      // Enable interpret button if keys are set (will check for data when clicked)
+      document.getElementById('btn-interpret').disabled = !pkg;
       showToast(`${n} Gemini key${n>1?'s':''} saved — ${mdl}.`);
       setTimeout(closeSettings, 900);
     }
