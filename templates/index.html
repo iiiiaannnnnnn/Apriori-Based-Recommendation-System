@@ -758,10 +758,14 @@ async function setApiKeys() {
       statusEl.className   = 'settings-status ' + (pkg ? 'settings-status-ok' : 'settings-status-warn');
       badgeEl.textContent  = `${n} key${n>1?'s':''} ready`;
       badgeEl.className    = 'ai-key-badge ai-key-ready';
-      _rotatorKeysSet = pkg;
-      // Enable interpret button if keys are set (will check for data when clicked)
-      document.getElementById('btn-interpret').disabled = !pkg;
-      showToast(`${n} Gemini key${n>1?'s':''} saved — ${mdl}.`);
+      _rotatorKeysSet = (n > 0); // Enable if any keys are saved
+      // Enable interpret button if keys are saved (package check happens server-side)
+      document.getElementById('btn-interpret').disabled = (n === 0);
+      if (!pkg && n > 0) {
+        showToast(`⚠ Keys saved but google-genai not installed. Run: pip install google-genai`);
+      } else {
+        showToast(`${n} Gemini key${n>1?'s':''} saved — ${mdl}.`);
+      }
       setTimeout(closeSettings, 900);
     }
   } catch(err) { showError('Failed to set keys: ' + err.message); }
