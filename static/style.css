@@ -965,12 +965,14 @@ body.sidebar-open #sidebar-backdrop { opacity: 0; pointer-events: none; }
 /* ── File Explorer Modal ──────────────────────────────── */
 #folder-modal {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.52); z-index: 3000;
+  background: rgba(0,0,0,.52); z-index: 5000;
   justify-content: center; align-items: center; padding: 16px;
 }
 .folder-modal-box {
-  background: #fff; border-radius: 12px; width: 900px; max-width: 100%;
-  max-height: 90vh; display: flex; flex-direction: column;
+  background: #fff; border-radius: 12px;
+  width: min(960px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+  display: flex; flex-direction: column;
   box-shadow: 0 8px 40px rgba(0,0,0,.3);
 }
 .folder-modal-header {
@@ -1087,11 +1089,18 @@ body.sidebar-open #sidebar-backdrop { opacity: 0; pointer-events: none; }
   font-size: .82rem; transition: background var(--t), transform var(--t);
   display: flex; align-items: center; gap: 8px;
   border: 1px solid transparent; color: var(--text-secondary);
+  user-select: none;
 }
 
 .folder-item:hover:not(.folder-file) {
   background: var(--blue-50); color: var(--text-primary);
   border-color: var(--blue-200); transform: translateX(2px);
+}
+
+.folder-item.selected:not(.folder-file) {
+  background: var(--blue-100);
+  border-color: var(--blue-400);
+  color: var(--text-primary);
 }
 
 .folder-item-icon { flex-shrink: 0; font-size: .95rem; }

@@ -1189,7 +1189,6 @@ function renderInteractiveChartsV2(data) {
   const rankedRules = data.rules || [];
   const networkRules = rankedRules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(',')).slice(0, 20);
   const heatRules = rankedRules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(','));
-  const bubbleRules = (data.rules || []).slice(0, 80);
   const parallelRules = (data.rules || []).slice(0, 50);
 
   const mount = (containerId, svg, height = 420) => {
@@ -1199,8 +1198,8 @@ function renderInteractiveChartsV2(data) {
     initSvgPanZoom(el.querySelector('.viz-shell'));
   };
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const max = arr => Math.max(...arr, 1);
-  const min = arr => Math.min(...arr, 0);
+  const maxValue = (arr, fallback = 0) => (arr.length ? Math.max(...arr) : fallback);
+  const minValue = (arr, fallback = 0) => (arr.length ? Math.min(...arr) : fallback);
   const lerp = (a, b, t) => a + (b - a) * t;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const fmt = (v, digits = 3) => Number(v ?? 0).toFixed(digits);
@@ -1271,12 +1270,13 @@ function renderInteractiveChartsV2(data) {
       .sort((a, b) => (a.support - b.support) || (a.confidence - b.confidence) || (b.lift - a.lift))
       .slice(0, maxPoints);
   };
-  const scatterRules = selectScatterRules(rankedRules);
+  const scatterRules = selectScatterRules(rankedRules, 260, 12);
+  const bubbleRules = selectScatterRules(rankedRules, 180, 10);
 
   const barSvg = (() => {
     const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 24, left: 180 };
     const bars = itemsets.slice().reverse();
-    const maxSupport = max(bars.map(d => d.support));
+    const maxSupport = maxValue(bars.map(d => d.support), 1);
     const rowH = (height - pad.top - pad.bottom) / Math.max(1, bars.length);
     return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Frequent itemsets bar chart">
       <rect width="100%" height="100%" fill="#fff"/>
@@ -1300,7 +1300,7 @@ function renderInteractiveChartsV2(data) {
     const xs = scatterRules.map(d => d.support);
     const ys = scatterRules.map(d => d.confidence);
     const lifts = scatterRules.map(d => d.lift);
-    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const xMin = minValue(xs, 0), xMax = maxValue(xs, 1), yMin = minValue(ys, 0), yMax = maxValue(ys, 1), liftMin = minValue(lifts, 0), liftMax = maxValue(lifts, 1);
     const xSpan = xMax - xMin || Math.max(xMax, 0.01);
     const ySpan = yMax - yMin || Math.max(yMax, 0.01);
     const xDomainMin = Math.max(0, xMin - xSpan * 0.08);
@@ -1419,7 +1419,7 @@ function renderInteractiveChartsV2(data) {
     const xs = bubbleRules.map(d => d.support);
     const ys = bubbleRules.map(d => d.confidence);
     const lifts = bubbleRules.map(d => d.lift);
-    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const xMin = minValue(xs, 0), xMax = maxValue(xs, 1), yMin = minValue(ys, 0), yMax = maxValue(ys, 1), liftMin = minValue(lifts, 0), liftMax = maxValue(lifts, 1);
     const xSpan = xMax - xMin || Math.max(xMax, 0.01);
     const ySpan = yMax - yMin || Math.max(yMax, 0.01);
     const xDomainMin = Math.max(0, xMin - xSpan * 0.06);
@@ -1476,8 +1476,8 @@ function renderInteractiveChartsV2(data) {
     const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 38, left: 64 };
     const dims = ['support', 'confidence', 'lift'];
     const values = dims.map(dim => parallelRules.map(d => d[dim]));
-    const mins = values.map(arr => min(arr));
-    const maxs = values.map(arr => max(arr));
+    const mins = values.map(arr => minValue(arr, 0));
+    const maxs = values.map(arr => maxValue(arr, 1));
     const xFor = idx => pad.left + idx * ((width - pad.left - pad.right) / (dims.length - 1));
     const yFor = (idx, v) => height - pad.bottom - ((v - mins[idx]) / (maxs[idx] - mins[idx] || 1)) * (height - pad.top - pad.bottom);
     return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Parallel coordinates chart">
@@ -1770,13 +1770,14 @@ function buildBreadcrumb(fullPath) {
   const breadcrumbEl = document.getElementById('file-explorer-breadcrumb');
 
   let pathParts = fullPath.replace(/\\/g, '/').split('/').filter(p => p);
-  let html = '<span class="breadcrumb-item" onclick="navigateToBreadcrumb(\'' + fullPath.split(/[\\/]/)[0] + '\\')">🏠</span>';
+  const rootPath = `${fullPath.split(/[\\/]/)[0]}\\`;
+  let html = `<span class="breadcrumb-item" onclick='navigateToBreadcrumb(${JSON.stringify(rootPath)})'>🏠</span>`;
 
   let accumulatedPath = '';
   for (let i = 0; i < pathParts.length; i++) {
     accumulatedPath += (i === 0 ? (fullPath[0] === '/' ? '/' : '') : '/') + pathParts[i];
     html += '<span class="breadcrumb-separator">›</span>';
-    html += `<span class="breadcrumb-item" onclick="navigateToBreadcrumb(${JSON.stringify(accumulatedPath)})">${escHtml(pathParts[i])}</span>`;
+    html += `<span class="breadcrumb-item" onclick='navigateToBreadcrumb(${JSON.stringify(accumulatedPath)})'>${escHtml(pathParts[i])}</span>`;
   }
 
   breadcrumbEl.innerHTML = html;
@@ -1831,7 +1832,7 @@ function renderFolderList(items) {
   let html = '';
 
   dirs.forEach(item => {
-    html += `<div class="folder-item" onclick="browsePath(${JSON.stringify(item.path)})" title="${escHtml(item.path)}">
+    html += `<div class="folder-item" onclick="selectFolderItem(this)" ondblclick='browsePath(${JSON.stringify(item.path)})' title="${escHtml(item.path)} (double-click to open)">
       <span class="folder-item-icon">📁</span>
       <span class="folder-item-name">${escHtml(item.name)}</span>
     </div>`;
@@ -1845,6 +1846,12 @@ function renderFolderList(items) {
   });
 
   folderList.innerHTML = html;
+}
+
+function selectFolderItem(el) {
+  if (!el) return;
+  document.querySelectorAll('#folder-list .folder-item.selected').forEach(node => node.classList.remove('selected'));
+  el.classList.add('selected');
 }
 
 function filterFolders(searchTerm) {
