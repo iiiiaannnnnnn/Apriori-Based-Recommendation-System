@@ -869,6 +869,7 @@ tbody tr:last-child td { border-bottom: none; }
   .settings-grid { grid-template-columns: 1fr; }
   .tab-card { min-height: 0; }
   .guide-body    { grid-template-columns: 1fr; }
+  body.sidebar-open #sidebar-backdrop { opacity: 1; pointer-events: auto; }
 }
 
 /* ── Folder browse button ─────────────────────────────── */
@@ -890,7 +891,7 @@ tbody tr:last-child td { border-bottom: none; }
   transition: opacity .25s var(--ease);
   z-index: 90;
 }
-body.sidebar-open #sidebar-backdrop { opacity: 1; pointer-events: auto; }
+body.sidebar-open #sidebar-backdrop { opacity: 0; pointer-events: none; }
 
 /* ── Recommendation cards ─────────────────────────────── */
 .recs-grid {
