@@ -13,6 +13,7 @@ from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 
 from mlxtend.frequent_patterns import apriori, association_rules
+from data_loader import load_transaction_data
 
 
 class AprioriLossLeaderApp:
@@ -148,39 +149,14 @@ class AprioriLossLeaderApp:
     def load_data(self):
         data_dir = Path(self.data_folder.get())
 
-        order_items_path = data_dir / "olist_order_items_dataset.csv"
-        products_path = data_dir / "olist_products_dataset.csv"
-        translation_path = data_dir / "product_category_name_translation.csv"
-
-        missing_files = []
-
-        if not order_items_path.exists():
-            missing_files.append("olist_order_items_dataset.csv")
-
-        if not products_path.exists():
-            missing_files.append("olist_products_dataset.csv")
-
-        if not translation_path.exists():
-            missing_files.append("product_category_name_translation.csv")
-
-        if missing_files:
+        try:
+            return load_transaction_data(data_dir)
+        except Exception as exc:
             messagebox.showerror(
-                "Missing Files",
-                "The following files are missing:\n\n" + "\n".join(missing_files)
+                "Data Loading Failed",
+                str(exc)
             )
             return None
-
-        order_items = pd.read_csv(order_items_path)
-        products = pd.read_csv(products_path)
-        translation = pd.read_csv(translation_path)
-
-        df = order_items.merge(products, on="product_id", how="left")
-        df = df.merge(translation, on="product_category_name", how="left")
-
-        df["item_name"] = df["product_category_name_english"].fillna(df["product_category_name"])
-        df = df.dropna(subset=["order_id", "item_name"])
-
-        return df
 
     def run_analysis(self):
         try:
@@ -229,7 +205,7 @@ class AprioriLossLeaderApp:
             df.groupby("item_name")
             .agg(
                 average_price=("price", "mean"),
-                total_units_sold=("order_item_id", "count"),
+                total_units_sold=("quantity", "sum"),
                 total_revenue=("price", "sum")
             )
             .reset_index()
@@ -485,8 +461,7 @@ class AprioriLossLeaderApp:
             label.pack(pady=20)
             return
 
-        plot_df = df.head(200).copy()
-        bubble_sizes = plot_df["lift"].clip(lower=1).mul(140)
+        plot_df = self.get_scatter_sample(df)
 
         fig = Figure(figsize=(11.5, 6.5), dpi=100)
         ax = fig.add_subplot(111)
@@ -494,7 +469,7 @@ class AprioriLossLeaderApp:
         scatter = ax.scatter(
             plot_df["support"],
             plot_df["confidence"],
-            s=bubble_sizes,
+            s=48,
             c=plot_df["lift"],
             cmap="YlGnBu",
             alpha=0.7,
@@ -502,21 +477,40 @@ class AprioriLossLeaderApp:
             linewidths=0.6
         )
 
-        top_points = plot_df.nlargest(8, ["lift", "confidence"])
-        for _, row in top_points.iterrows():
+        label_indexes = (
+            plot_df.index if len(plot_df) <= 35
+            else plot_df.assign(_score=plot_df["lift"] * 2 + plot_df["confidence"] + plot_df["support"])
+                        .nlargest(24, "_score").index
+        )
+        for label_no, idx in enumerate(plot_df.index, start=1):
+            if idx not in label_indexes:
+                continue
+            row = plot_df.loc[idx]
             ax.annotate(
-                f"{row['Item A']} -> {row['Item B']}",
+                str(label_no),
                 (row["support"], row["confidence"]),
                 textcoords="offset points",
-                xytext=(6, 6),
-                fontsize=8,
-                bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "#cccccc", "alpha": 0.85}
+                xytext=(5, 5),
+                fontsize=7,
+                weight="bold",
+                color="#0b2f4a"
             )
 
         ax.set_title("Support vs Confidence of Association Rules", fontsize=14, pad=12)
         ax.set_xlabel("Support")
         ax.set_ylabel("Confidence")
         ax.grid(linestyle="--", alpha=0.25)
+        corr = plot_df["support"].corr(plot_df["confidence"]) if len(plot_df) > 1 else None
+        if pd.notna(corr):
+            ax.text(
+                0.01, 0.98,
+                f"Numbered rules shown - Pearson r = {corr:.2f}",
+                transform=ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize=8,
+                color="#607d9c"
+            )
         colorbar = fig.colorbar(scatter, ax=ax)
         colorbar.set_label("Lift")
         fig.tight_layout()
@@ -524,6 +518,53 @@ class AprioriLossLeaderApp:
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def get_scatter_sample(self, df, max_points=260, bins=12):
+        if df is None or df.empty or len(df) <= max_points:
+            return df.copy() if df is not None else df
+
+        plot_df = df.copy().reset_index(drop=True)
+        bin_count = min(bins, max(2, len(plot_df)))
+        plot_df["_support_bin"] = pd.qcut(
+            plot_df["support"].rank(method="first"),
+            q=bin_count,
+            labels=False,
+            duplicates="drop"
+        )
+        plot_df["_confidence_bin"] = pd.qcut(
+            plot_df["confidence"].rank(method="first"),
+            q=bin_count,
+            labels=False,
+            duplicates="drop"
+        )
+
+        representatives = (
+            plot_df.sort_values(
+                ["_support_bin", "_confidence_bin", "lift"],
+                ascending=[True, True, False]
+            )
+            .groupby(["_support_bin", "_confidence_bin"], dropna=False)
+            .head(2)
+        )
+
+        if len(representatives) < max_points:
+            remaining = plot_df.drop(index=representatives.index, errors="ignore")
+            needed = max_points - len(representatives)
+            if not remaining.empty:
+                remaining = remaining.sort_values(["support", "confidence", "lift"])
+                step = max(len(remaining) / needed, 1)
+                fill_indexes = [
+                    remaining.index[min(int(i * step), len(remaining) - 1)]
+                    for i in range(min(needed, len(remaining)))
+                ]
+                representatives = pd.concat([representatives, remaining.loc[fill_indexes]])
+
+        return (
+            representatives.drop(columns=["_support_bin", "_confidence_bin"], errors="ignore")
+            .drop_duplicates()
+            .sort_values(["support", "confidence", "lift"], ascending=[True, True, False])
+            .head(max_points)
+        )
 
     def display_association_heatmap(self, parent, df):
         for widget in parent.winfo_children():
@@ -601,9 +642,9 @@ class AprioriLossLeaderApp:
             return
 
         plot_df = df.head(80).copy()
-        bubble_sizes = (plot_df["lift"] ** 2) * 90
+        bubble_sizes = (plot_df["lift"] ** 2) * 48
 
-        fig = Figure(figsize=(11.5, 6.5), dpi=100)
+        fig = Figure(figsize=(12, 6.5), dpi=100)
         ax = fig.add_subplot(111)
 
         scatter = ax.scatter(
@@ -623,7 +664,7 @@ class AprioriLossLeaderApp:
                 f"{row['Item A']} \u2192 {row['Item B']}",
                 (row["support"], row["confidence"]),
                 textcoords="offset points",
-                xytext=(8, 8),
+                xytext=(18, 8),
                 fontsize=8,
                 bbox={"boxstyle": "round,pad=0.25", "fc": "white", "ec": "#bbbbbb", "alpha": 0.9}
             )
@@ -635,6 +676,13 @@ class AprioriLossLeaderApp:
         ax.set_xlabel("Support")
         ax.set_ylabel("Confidence")
         ax.grid(linestyle="--", alpha=0.2)
+        if not plot_df.empty:
+            x_min, x_max = plot_df["support"].min(), plot_df["support"].max()
+            x_span = max(x_max - x_min, 0.001)
+            ax.set_xlim(x_min - x_span * 0.04, x_max + x_span * 0.45)
+            y_min, y_max = plot_df["confidence"].min(), plot_df["confidence"].max()
+            y_span = max(y_max - y_min, 0.001)
+            ax.set_ylim(max(0, y_min - y_span * 0.12), min(1, y_max + y_span * 0.22))
         cb = fig.colorbar(scatter, ax=ax)
         cb.set_label("Lift")
         fig.tight_layout()

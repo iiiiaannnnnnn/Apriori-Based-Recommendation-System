@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Apriori Loss Leader Discovery</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -15,6 +16,7 @@
   <header class="app-header">
     <div class="header-inner">
       <div class="header-brand">
+        <button type="button" id="sidebar-toggle-btn" class="btn-sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
         <div class="header-icon">🛒</div>
         <div>
           <div class="header-title">Apriori-Based Loss Leader Discovery Tool</div>
@@ -34,75 +36,10 @@
   ══════════════════════════════════════════ -->
   <div class="app-body">
 
-    <!-- ────────────────────────────────────────
-         SIDEBAR  (always visible, not collapsable)
+      <!-- ────────────────────────────────────────
+         SIDEBAR  (toggleable)
     ──────────────────────────────────────── -->
     <aside class="sidebar">
-
-      <!-- Settings -->
-      <div class="sb-section">
-        <div class="sb-title">⚙ Settings</div>
-
-        <div class="field">
-          <label for="data_folder">
-            📁 Data Folder
-            <span class="info-icon" data-tip="Folder with the 3 Olist CSV files">?</span>
-          </label>
-          <div style="display:flex;gap:5px">
-            <input id="data_folder" type="text" value="{{ default_data_folder }}"
-                   placeholder="C:\path\to\data" style="flex:1;min-width:0"/>
-            <button class="btn-browse" title="Browse folders" onclick="openFolderBrowser()">📂</button>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="min_support">
-            📈 Min Support
-            <span class="info-icon" data-tip="Min fraction of orders containing the itemset (0–1)">?</span>
-          </label>
-          <input id="min_support" type="number" step="0.001" min="0.001" value="0.003"/>
-        </div>
-
-        <div class="field">
-          <label for="min_confidence">
-            🎯 Min Confidence
-            <span class="info-icon" data-tip="P(B|A): likelihood of B given A was bought (0–1)">?</span>
-          </label>
-          <input id="min_confidence" type="number" step="0.05" min="0.01" max="1" value="0.30"/>
-        </div>
-
-        <div class="field">
-          <label for="min_lift">
-            🚀 Min Lift
-            <span class="info-icon" data-tip="Association strength vs random. Must be ≥ 1.">?</span>
-          </label>
-          <input id="min_lift" type="number" step="0.1" min="1" value="1.20"/>
-        </div>
-
-        <div class="field">
-          <label for="max_len">
-            📦 Max Itemset Size
-            <span class="info-icon" data-tip="Maximum number of items per itemset (2 = pairs, 3 = triples, etc.). Higher values find larger combos but are slower.">?</span>
-          </label>
-          <input id="max_len" type="number" step="1" min="2" max="10" value="3"/>
-        </div>
-
-        <div class="field">
-          <label for="low_price_percentile">
-            💰 Low Price Percentile
-            <span class="info-icon" data-tip="Items below this price percentile are flagged as loss-leader candidates">?</span>
-          </label>
-          <input id="low_price_percentile" type="number" step="1" min="1" max="100" value="25"/>
-        </div>
-
-        <div class="field">
-          <label for="graph_limit">
-            🕸️ Max Graph Rules
-            <span class="info-icon" data-tip="Top N rules shown in Network Graph (keep ≤ 30)">?</span>
-          </label>
-          <input id="graph_limit" type="number" step="1" min="1" value="20"/>
-        </div>
-      </div>
 
       <!-- Run button -->
       <div class="sb-section">
@@ -150,26 +87,35 @@
 
       <!-- Tabs -->
       <div class="tabs-wrapper">
-        <div class="tab-bar">
-          <div class="tab-group-label">Results</div>
-          <button class="tab-btn active" onclick="switchTab('tab-rules',    this)">📋 Association Rules</button>
-          <button class="tab-btn"        onclick="switchTab('tab-loss',     this)">💸 Loss Leaders</button>
-          <button class="tab-btn"        onclick="switchTab('tab-itemsets-list', this)">📦 Frequent Itemsets</button>
-          <button class="tab-btn"        onclick="switchTab('tab-recs',     this)">💡 Recommendations</button>
-          <div class="tab-group-sep"></div>
-          <div class="tab-group-label">Visualizations</div>
-          <button class="tab-btn"        onclick="switchTab('tab-itemset',  this)"><span class="tab-num">1</span> Frequent Itemsets</button>
-          <button class="tab-btn"        onclick="switchTab('tab-scatter',  this)"><span class="tab-num">2</span> Scatter Plot</button>
-          <button class="tab-btn"        onclick="switchTab('tab-network',  this)"><span class="tab-num">3</span> Network Graph</button>
-          <button class="tab-btn"        onclick="switchTab('tab-heatmap',  this)"><span class="tab-num">4</span> Heatmap</button>
-          <button class="tab-btn"        onclick="switchTab('tab-bubble',   this)"><span class="tab-num">5</span> Bubble Plot</button>
-          <button class="tab-btn"        onclick="switchTab('tab-parallel', this)"><span class="tab-num">6</span> Parallel Coords</button>
-          <div class="tab-group-sep"></div>
-          <div class="tab-group-label">Intelligence</div>
-          <button class="tab-btn"        onclick="switchTab('tab-ai',       this)">🤖 AI Insights</button>
-          <div class="tab-group-sep"></div>
-          <div class="tab-group-label">Help</div>
-          <button class="tab-btn"        onclick="switchTab('tab-guide',    this)">📖 Guide</button>
+        <div class="view-switcher">
+          <div class="view-group">
+            <div class="view-group-label">Results</div>
+            <div class="view-grid">
+              <button class="tab-btn tab-card active" onclick="switchTab('tab-rules', this)"><span class="tab-card-title">Association Rules</span><span class="tab-card-sub">Ranked rules with confidence and lift</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-loss', this)"><span class="tab-card-title">Loss Leaders</span><span class="tab-card-sub">Low-price drivers for strong rules</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-itemsets-list', this)"><span class="tab-card-title">Frequent Itemsets</span><span class="tab-card-sub">Complete itemset table</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-recs', this)"><span class="tab-card-title">Recommendations</span><span class="tab-card-sub">Actionable business ideas</span></button>
+            </div>
+          </div>
+
+          <div class="view-group">
+            <div class="view-group-label">Visualizations</div>
+            <div class="view-grid view-grid-visuals">
+              <button class="tab-btn tab-card" onclick="switchTab('tab-itemset', this)"><span class="tab-card-title"><span class="tab-num">1</span> Frequent Itemsets</span><span class="tab-card-sub">Support-ranked bar chart</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-scatter', this)"><span class="tab-card-title"><span class="tab-num">2</span> Scatter Plot</span><span class="tab-card-sub">Support vs confidence</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-network', this)"><span class="tab-card-title"><span class="tab-num">3</span> Network Graph</span><span class="tab-card-sub">Relationships and hub nodes</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-heatmap', this)"><span class="tab-card-title"><span class="tab-num">4</span> Heatmap</span><span class="tab-card-sub">Lift by category pair</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-bubble', this)"><span class="tab-card-title"><span class="tab-num">5</span> Bubble Plot</span><span class="tab-card-sub">Lift-focused overview</span></button>
+              <button class="tab-btn tab-card" onclick="switchTab('tab-parallel', this)"><span class="tab-card-title"><span class="tab-num">6</span> Parallel Coords</span><span class="tab-card-sub">Metric trade-offs at a glance</span></button>
+            </div>
+          </div>
+
+          <div class="view-group view-group-inline">
+            <div class="view-group-label">Intelligence</div>
+            <button class="tab-btn tab-card tab-card-inline" onclick="switchTab('tab-ai', this)">🤖 AI Insights</button>
+            <div class="view-group-label">Help</div>
+            <button class="tab-btn tab-card tab-card-inline" onclick="switchTab('tab-guide', this)">📖 Guide</button>
+          </div>
         </div>
 
         <!-- Tab: Association Rules -->
@@ -308,7 +254,7 @@
             </div>
             <div class="guide-card">
               <h3><span class="tab-num" style="margin-right:5px">2</span>Scatter Plot</h3>
-              <p>Each point = one rule. X = support, Y = confidence. Color &amp; size encode lift.</p>
+              <p>Each point = one rule. X = support, Y = confidence. Color encodes lift while marker size stays fixed.</p>
             </div>
             <div class="guide-card">
               <h3><span class="tab-num" style="margin-right:5px">3</span>Network Graph</h3>
@@ -353,11 +299,58 @@
     <div class="settings-modal-header">
       <div class="settings-modal-title">
         <span class="settings-icon">⚙</span>
-        <span>Gemini API Settings</span>
+        <span>App Settings</span>
       </div>
       <button class="settings-modal-close" onclick="closeSettings()" title="Close">✕</button>
     </div>
     <div class="settings-modal-body">
+      <div class="settings-section-title">Analysis Settings</div>
+      <div class="settings-grid">
+        <div class="settings-field settings-wide">
+          <label for="data_folder">
+            Data Folder
+            <span class="settings-tip">Folder with the 3 Olist CSV files</span>
+          </label>
+          <div class="settings-inline">
+            <input id="data_folder" type="text" value="{{ default_data_folder }}" placeholder="C:\path\to\data"/>
+            <button class="btn-browse" title="Browse folders" onclick="openFolderBrowser()">📂</button>
+          </div>
+        </div>
+
+        <div class="settings-field">
+          <label for="min_support">Min Support <span class="settings-tip">Min fraction of orders containing the itemset</span></label>
+          <input id="min_support" type="number" step="0.001" min="0.001" value="0.003"/>
+        </div>
+
+        <div class="settings-field">
+          <label for="min_confidence">Min Confidence <span class="settings-tip">P(B|A): likelihood of B given A</span></label>
+          <input id="min_confidence" type="number" step="0.05" min="0.01" max="1" value="0.30"/>
+        </div>
+
+        <div class="settings-field">
+          <label for="min_lift">Min Lift <span class="settings-tip">Association strength vs random</span></label>
+          <input id="min_lift" type="number" step="0.1" min="1" value="1.20"/>
+        </div>
+
+        <div class="settings-field">
+          <label for="max_len">Max Itemset Size <span class="settings-tip">2 = pairs, 3 = triples, etc.</span></label>
+          <input id="max_len" type="number" step="1" min="2" max="10" value="3"/>
+        </div>
+
+        <div class="settings-field">
+          <label for="low_price_percentile">Low Price Percentile <span class="settings-tip">Loss-leader threshold percentile</span></label>
+          <input id="low_price_percentile" type="number" step="1" min="1" max="100" value="25"/>
+        </div>
+
+        <div class="settings-field">
+          <label for="graph_limit">Max Graph Rules <span class="settings-tip">Top N rules shown in Network Graph</span></label>
+          <input id="graph_limit" type="number" step="1" min="1" value="20"/>
+        </div>
+      </div>
+
+      <div class="settings-divider"></div>
+
+      <div class="settings-section-title">Gemini API Settings</div>
       <div class="settings-field">
         <label for="api-keys">
           API Keys
@@ -391,14 +384,62 @@
 <div id="folder-modal">
   <div class="folder-modal-box">
     <div class="folder-modal-header">
-      <span class="folder-modal-title">📂 Select Data Folder</span>
+      <span class="folder-modal-title">📂 Browse Data Folder</span>
       <button class="folder-modal-close" onclick="closeFolderBrowser()">✕</button>
     </div>
-    <div class="folder-current-path" id="folder-current-path">Loading…</div>
-    <div class="folder-list" id="folder-list"></div>
+    <div class="file-explorer-container">
+      <!-- Sidebar with quick access -->
+      <div class="file-explorer-sidebar" id="file-explorer-sidebar">
+        <span class="quick-access-section-title">Quick Access</span>
+        <div class="quick-access-item" data-path="home" onclick="navigateQuickAccess(this)">
+          <span class="quick-access-icon">🏠</span>
+          <span>Home</span>
+        </div>
+        <div class="quick-access-item" data-path="desktop" onclick="navigateQuickAccess(this)">
+          <span class="quick-access-icon">🖥</span>
+          <span>Desktop</span>
+        </div>
+        <div class="quick-access-item" data-path="documents" onclick="navigateQuickAccess(this)">
+          <span class="quick-access-icon">📄</span>
+          <span>Documents</span>
+        </div>
+        <div class="quick-access-item" data-path="downloads" onclick="navigateQuickAccess(this)">
+          <span class="quick-access-icon">⬇</span>
+          <span>Downloads</span>
+        </div>
+      </div>
+
+      <!-- Main content area -->
+      <div class="file-explorer-main">
+        <!-- Breadcrumb navigation -->
+        <div class="file-explorer-breadcrumb" id="file-explorer-breadcrumb">
+          <span class="breadcrumb-item" onclick="navigateToBreadcrumb('/')">Home</span>
+        </div>
+
+        <!-- Search filter -->
+        <div class="file-explorer-search">
+          <div class="search-input-wrapper">
+            <input
+              id="folder-search-input"
+              type="text"
+              placeholder="Search folders..."
+              onkeyup="filterFolders(this.value)"
+              spellcheck="false">
+          </div>
+        </div>
+
+        <!-- Folder list -->
+        <div class="folder-list" id="folder-list"></div>
+      </div>
+    </div>
+
+    <!-- Current path display -->
+    <div class="folder-current-path" id="folder-current-path">📁 Loading…</div>
+
+    <!-- Footer buttons -->
     <div class="folder-modal-footer">
-      <button class="btn-select-folder" onclick="selectCurrentFolder()">✅ Use This Folder</button>
       <button class="btn-folder-cancel" onclick="closeFolderBrowser()">Cancel</button>
+      <button class="btn-select-folder" onclick="selectCurrentFolder()">✓ Use This Folder</button>
     </div>
   </div>
 </div>
@@ -420,6 +461,15 @@
 <!-- Toast -->
 <div id="toast"><span id="toast-msg"></span></div>
 
+<!-- Sidebar Backdrop -->
+<div id="sidebar-backdrop" onclick="toggleSidebar(true)"></div>
+<div id="chart-tooltip" role="tooltip" aria-hidden="true"></div>
+<div id="sidebar-coachmark" class="sidebar-coachmark" hidden>
+  <button type="button" class="sidebar-coachmark-close" onclick="hideSidebarCoachmark()" aria-label="Dismiss tip">×</button>
+  <div class="sidebar-coachmark-title">Need exports or summary?</div>
+  <div class="sidebar-coachmark-body">Click the hamburger to reopen the sidebar for exports, analysis summary, and settings.</div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════
      JAVASCRIPT
 ══════════════════════════════════════════════════════ -->
@@ -429,6 +479,56 @@ let lastRules         = [];
 let lastLossLeaders   = [];
 let _lastAnalysisData = null;
 let _rotatorKeysSet   = false;
+let _chartTooltipEl   = null;
+let _coachmarkTimer   = null;
+
+function ensureChartTooltip() {
+  if (!_chartTooltipEl) _chartTooltipEl = document.getElementById('chart-tooltip');
+  return _chartTooltipEl;
+}
+
+function showChartTooltip(event, html) {
+  const el = ensureChartTooltip();
+  if (!el || !html) return;
+  el.innerHTML = html;
+  el.classList.add('visible');
+  el.setAttribute('aria-hidden', 'false');
+  moveChartTooltip(event);
+}
+
+function moveChartTooltip(event) {
+  const el = ensureChartTooltip();
+  if (!el || !el.classList.contains('visible') || !event) return;
+  const gap = 16;
+  const rect = el.getBoundingClientRect();
+  const targetRect = event.target?.getBoundingClientRect?.();
+  const pointX = Number.isFinite(event.clientX) ? event.clientX : ((targetRect?.left ?? 20) + ((targetRect?.width ?? 40) / 2));
+  const pointY = Number.isFinite(event.clientY) ? event.clientY : ((targetRect?.top ?? 20) + ((targetRect?.height ?? 20) / 2));
+  let left = pointX + gap;
+  let top = pointY + gap;
+  if (left + rect.width > window.innerWidth - 12) left = Math.max(12, pointX - rect.width - gap);
+  if (top + rect.height > window.innerHeight - 12) top = Math.max(12, pointY - rect.height - gap);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+function hideChartTooltip() {
+  const el = ensureChartTooltip();
+  if (!el) return;
+  el.classList.remove('visible');
+  el.setAttribute('aria-hidden', 'true');
+}
+
+function bindChartHover(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-tooltip]').forEach(node => {
+    node.addEventListener('pointerenter', event => showChartTooltip(event, node.dataset.tooltip));
+    node.addEventListener('pointermove', moveChartTooltip);
+    node.addEventListener('pointerleave', hideChartTooltip);
+    node.addEventListener('focus', event => showChartTooltip(event, node.dataset.tooltip));
+    node.addEventListener('blur', hideChartTooltip);
+  });
+}
 
 // ─── Tab switching ──────────────────────────────────────
 function switchTab(tabId, btn) {
@@ -441,6 +541,74 @@ function switchTab(tabId, btn) {
   panel.style.animation = '';
   btn.classList.add('active');
   btn.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'nearest' });
+}
+
+function setSidebarCollapsed(collapsed) {
+  const sidebar = document.querySelector('.sidebar');
+  const main = document.querySelector('.main-content');
+  const root = document.documentElement;
+  if (!window.__apriori_sidebar_width) {
+    window.__apriori_sidebar_width = getComputedStyle(root).getPropertyValue('--sidebar-width').trim() || '290px';
+  }
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  document.body.classList.toggle('sidebar-open', !collapsed);
+  const sidebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width').trim() || '290px';
+
+  if (sidebar && main) {
+    if (collapsed) {
+      sidebar.style.transform = 'translateX(-100%)';
+      sidebar.style.opacity = '0';
+      sidebar.style.visibility = 'hidden';
+      sidebar.style.pointerEvents = 'none';
+      root.style.setProperty('--sidebar-width', '0px');
+      main.style.setProperty('margin-left', '0px', 'important');
+      main.style.setProperty('width', '100%', 'important');
+    } else {
+      sidebar.style.transform = 'translateX(0)';
+      sidebar.style.opacity = '1';
+      sidebar.style.visibility = 'visible';
+      sidebar.style.pointerEvents = 'auto';
+      root.style.setProperty('--sidebar-width', window.__apriori_sidebar_width || '290px');
+      main.style.setProperty('margin-left', sidebarWidth, 'important');
+      main.style.setProperty('width', `calc(100% - ${sidebarWidth})`, 'important');
+    }
+  }
+  if (!collapsed) hideSidebarCoachmark();
+}
+
+function toggleSidebar(forceClose = false) {
+  const collapsed = forceClose ? true : !document.body.classList.contains('sidebar-collapsed');
+  setSidebarCollapsed(collapsed);
+}
+
+function positionSidebarCoachmark() {
+  const tip = document.getElementById('sidebar-coachmark');
+  const button = document.getElementById('sidebar-toggle-btn');
+  if (!tip || !button || tip.hidden) return;
+  const rect = button.getBoundingClientRect();
+  const top = rect.bottom + 12;
+  const left = Math.min(window.innerWidth - tip.offsetWidth - 16, Math.max(16, rect.left - 8));
+  tip.style.top = `${top}px`;
+  tip.style.left = `${left}px`;
+}
+
+function hideSidebarCoachmark() {
+  const tip = document.getElementById('sidebar-coachmark');
+  if (!tip) return;
+  tip.hidden = true;
+  tip.classList.remove('visible');
+  clearTimeout(_coachmarkTimer);
+}
+
+function showSidebarCoachmark() {
+  const tip = document.getElementById('sidebar-coachmark');
+  const button = document.getElementById('sidebar-toggle-btn');
+  if (!tip || !button) return;
+  hideSidebarCoachmark();
+  tip.hidden = false;
+  tip.classList.add('visible');
+  positionSidebarCoachmark();
+  _coachmarkTimer = setTimeout(hideSidebarCoachmark, 6500);
 }
 
 // ─── Run Analysis ───────────────────────────────────────
@@ -463,6 +631,8 @@ async function runAnalysis() {
   if (params.graph_limit < 1)                                      { showError('Graph limit must be ≥ 1.'); return; }
 
   hideError();
+  setSidebarCollapsed(true);
+  hideSidebarCoachmark();
   showLoading();
 
   // kick off progress bar
@@ -504,14 +674,9 @@ async function runAnalysis() {
     renderTable('tbl-loss', lastLossLeaders,
       ['Item A','Item B','average_price','total_units_sold','support','confidence','lift','loss_leader_score']);
 
-    setChart('chart-itemset',  data.charts.itemset);
     renderItemsetsTable(data.itemsets_data || []);
-    setChart('chart-scatter',  data.charts.scatter);
-    setChart('chart-network',  data.charts.network);
-    setChart('chart-heatmap',  data.charts.heatmap);
-    setChart('chart-bubble',   data.charts.bubble);
-    setChart('chart-parallel', data.charts.parallel);
-
+    renderInteractiveChartsV2(data);
+    setTimeout(showSidebarCoachmark, 450);
     showToast(`Done! ${lastRules.length} rules found.`);
 
   } catch (err) {
@@ -654,16 +819,689 @@ function setChart(containerId, b64) {
     el.innerHTML = '<div class="chart-placeholder">Not enough data to render this chart.</div>';
     return;
   }
-  const img = document.createElement('img');
-  img.src   = 'data:image/png;base64,' + b64;
-  img.alt   = 'chart';
-  img.title = 'Click to zoom';
-  img.addEventListener('click', () => openModal(img.src));
-  el.innerHTML = '';
-  el.appendChild(img);
+  const src = 'data:image/png;base64,' + b64;
+  el.innerHTML = `
+    <div class="chart-interactive" data-scale="1" data-pan-x="0" data-pan-y="0">
+      <div class="chart-toolbar">
+        <span class="chart-hint">Scroll to zoom · drag to pan</span>
+        <div class="chart-actions">
+          <button type="button" class="chart-action" data-action="zoom-out">−</button>
+          <button type="button" class="chart-action" data-action="reset">Reset</button>
+          <button type="button" class="chart-action" data-action="zoom-in">+</button>
+          <button type="button" class="chart-action" data-action="open">Open</button>
+        </div>
+      </div>
+      <div class="chart-viewport">
+        <img class="chart-image" src="${src}" alt="chart" draggable="false" />
+      </div>
+    </div>`;
+
+  const wrap = el.querySelector('.chart-interactive');
+  const viewport = el.querySelector('.chart-viewport');
+  const image = el.querySelector('.chart-image');
+  const state = { scale: 1, panX: 0, panY: 0 };
+  let frame = 0;
+  const applyTransform = () => {
+    frame = 0;
+    image.style.transform = `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.scale})`;
+  };
+  const scheduleTransform = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(applyTransform);
+  };
+  const resetTransform = () => {
+    state.scale = 1;
+    state.panX = 0;
+    state.panY = 0;
+    scheduleTransform();
+  };
+  const zoomAt = (delta, anchorX = null, anchorY = null) => {
+    const currentScale = state.scale;
+    const nextScale = Math.min(4, Math.max(1, currentScale + delta));
+    if (Math.abs(nextScale - currentScale) < 0.001) return;
+    const rect = viewport.getBoundingClientRect();
+    const centerX = anchorX === null ? rect.width / 2 : anchorX - rect.left;
+    const centerY = anchorY === null ? rect.height / 2 : anchorY - rect.top;
+    const ratio = nextScale / currentScale;
+    state.scale = nextScale;
+    state.panX = centerX - (centerX - state.panX) * ratio;
+    state.panY = centerY - (centerY - state.panY) * ratio;
+    scheduleTransform();
+  };
+
+  el.querySelector('[data-action="zoom-in"]').addEventListener('click', () => zoomAt(0.25));
+  el.querySelector('[data-action="zoom-out"]').addEventListener('click', () => zoomAt(-0.25));
+  el.querySelector('[data-action="reset"]').addEventListener('click', resetTransform);
+  el.querySelector('[data-action="open"]').addEventListener('click', () => openModal(src));
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startPanX = 0;
+  let startPanY = 0;
+
+  viewport.addEventListener('wheel', event => {
+    event.preventDefault();
+    zoomAt(event.deltaY < 0 ? 0.22 : -0.22, event.clientX, event.clientY);
+  }, { passive: false });
+  viewport.addEventListener('pointerdown', event => {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    dragging = true;
+    viewport.setPointerCapture(event.pointerId);
+    startX = event.clientX;
+    startY = event.clientY;
+    startPanX = state.panX;
+    startPanY = state.panY;
+    viewport.classList.add('dragging');
+  });
+  viewport.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    event.preventDefault();
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    state.panX = startPanX + dx;
+    state.panY = startPanY + dy;
+    scheduleTransform();
+  });
+  const stopDragging = () => {
+    dragging = false;
+    viewport.classList.remove('dragging');
+  };
+  viewport.addEventListener('pointerup', stopDragging);
+  viewport.addEventListener('pointercancel', stopDragging);
+  image.addEventListener('dblclick', resetTransform);
+
+  scheduleTransform();
+}
+
+function initSvgPanZoom(shell) {
+  if (!shell || shell.dataset.panzoomReady === '1') return;
+  const svg = shell.querySelector('.viz-svg');
+  if (!svg) return;
+
+  shell.dataset.panzoomReady = '1';
+  const state = { scale: 1, panX: 0, panY: 0 };
+  let frame = 0;
+
+  const clampScale = value => Math.min(4, Math.max(1, value));
+
+  const applyTransform = () => {
+    frame = 0;
+    svg.style.transform = `translate3d(${state.panX}px, ${state.panY}px, 0) scale(${state.scale})`;
+  };
+
+  const scheduleTransform = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(applyTransform);
+  };
+
+  const resetTransform = () => {
+    state.scale = 1;
+    state.panX = 0;
+    state.panY = 0;
+    scheduleTransform();
+  };
+
+  const zoomAt = (delta, anchorX = null, anchorY = null) => {
+    const currentScale = state.scale;
+    const nextScale = clampScale(currentScale + delta);
+    if (Math.abs(nextScale - currentScale) < 0.001) return;
+    const rect = shell.getBoundingClientRect();
+    const centerX = anchorX === null ? rect.width / 2 : anchorX - rect.left;
+    const centerY = anchorY === null ? rect.height / 2 : anchorY - rect.top;
+    const ratio = nextScale / currentScale;
+    state.scale = nextScale;
+    state.panX = centerX - (centerX - state.panX) * ratio;
+    state.panY = centerY - (centerY - state.panY) * ratio;
+    scheduleTransform();
+  };
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startPanX = 0;
+  let startPanY = 0;
+
+  shell.addEventListener('wheel', event => {
+    event.preventDefault();
+    zoomAt(event.deltaY < 0 ? 0.22 : -0.22, event.clientX, event.clientY);
+  }, { passive: false });
+
+  shell.addEventListener('pointerdown', event => {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    hideChartTooltip();
+    dragging = true;
+    shell.setPointerCapture(event.pointerId);
+    startX = event.clientX;
+    startY = event.clientY;
+    startPanX = state.panX;
+    startPanY = state.panY;
+    shell.classList.add('dragging');
+  });
+
+  shell.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    event.preventDefault();
+    state.panX = startPanX + (event.clientX - startX);
+    state.panY = startPanY + (event.clientY - startY);
+    scheduleTransform();
+  });
+
+  const stopDragging = () => {
+    dragging = false;
+    shell.classList.remove('dragging');
+  };
+
+  shell.addEventListener('pointerup', stopDragging);
+  shell.addEventListener('pointercancel', stopDragging);
+  shell.addEventListener('dblclick', resetTransform);
+
+  scheduleTransform();
+}
+
+function renderInteractiveCharts(data) {
+  const itemsets = (data.itemsets_data || []).slice().sort((a, b) => b.support - a.support).slice(0, 12);
+  const rules = (data.rules || []).slice(0, 200);
+  const networkRules = rules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(',')).slice(0, 20);
+  const heatRules = rules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(','));
+  const bubbleRules = (data.rules || []).slice(0, 80);
+  const parallelRules = (data.rules || []).slice(0, 50);
+
+  const mount = (containerId, svg, height = 420) => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = `<div class="viz-shell" style="height:${height}px">${svg}</div>`;
+    initSvgPanZoom(el.querySelector('.viz-shell'));
+  };
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const max = arr => Math.max(...arr, 1);
+  const min = arr => Math.min(...arr, 0);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  const barSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 24, left: 180 };
+    const bars = itemsets.slice().reverse();
+    const maxSupport = max(bars.map(d => d.support));
+    const rowH = (height - pad.top - pad.bottom) / Math.max(1, bars.length);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Frequent itemsets bar chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">1. Frequent Itemsets by Support</text>
+      ${bars.map((d, i) => {
+        const y = pad.top + i * rowH + 2;
+        const w = ((d.support / maxSupport) * (width - pad.left - pad.right));
+        const color = d.item_count === 1 ? '#bfd7b5' : '#2e7d32';
+        return `<g>
+          <title>${esc(d.itemset_label)} | Support: ${d.support.toFixed(4)}</title>
+          <text x="${pad.left - 10}" y="${y + rowH * 0.68}" text-anchor="end" class="viz-label">${esc(d.itemset_label)}</text>
+          <rect x="${pad.left}" y="${y}" width="${Math.max(2, w)}" height="${rowH - 6}" rx="6" fill="${color}"/>
+          <text x="${pad.left + Math.max(8, w + 8)}" y="${y + rowH * 0.68}" class="viz-value">${d.support.toFixed(4)}</text>
+        </g>`;
+      }).join('')}
+      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="#90caf9"/>
+    </svg>`;
+  })();
+
+  const scatterSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 48, left: 64 };
+    const xs = rules.map(d => d.support), ys = rules.map(d => d.confidence), lifts = rules.map(d => d.lift);
+    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const sx = v => pad.left + ((v - xMin) / (xMax - xMin || 1)) * (width - pad.left - pad.right);
+    const sy = v => height - pad.bottom - ((v - yMin) / (yMax - yMin || 1)) * (height - pad.top - pad.bottom);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Support vs confidence scatter plot">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">2. Support vs Confidence Scatter Plot</text>
+      <g stroke="#e8f0f8">
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"/>
+        <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"/>
+      </g>
+      ${rules.map(d => {
+        const x = sx(d.support), y = sy(d.confidence), r = 6;
+        const t = (d.lift - liftMin) / (liftMax - liftMin || 1);
+        const color = `rgb(${Math.round(200 - 80 * t)}, ${Math.round(220 - 140 * t)}, ${Math.round(200 - 130 * t)})`;
+        return `<g>
+          <title>${esc(d['Item A'])} → ${esc(d['Item B'])} | Support ${d.support.toFixed(4)} | Confidence ${d.confidence.toFixed(4)} | Lift ${d.lift.toFixed(3)}</title>
+          <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="#173f5f" stroke-width="1"/>
+        </g>`;
+      }).join('')}
+      <text x="${(width + pad.left - pad.right) / 2}" y="${height - 10}" text-anchor="middle" class="viz-axis">Support</text>
+      <text transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle" class="viz-axis">Confidence</text>
+    </svg>`;
+  })();
+
+  const networkSvg = (() => {
+    const width = 900, height = 460, pad = { top: 28, right: 24, bottom: 24, left: 24 };
+    const nodes = Array.from(new Set(networkRules.flatMap(r => [r['Item A'], r['Item B']])));
+    const leftNodes = nodes.filter((n, i) => i % 2 === 0);
+    const rightNodes = nodes.filter((n, i) => i % 2 === 1);
+    const positions = {};
+    leftNodes.forEach((n, i) => { positions[n] = { x: 180, y: 70 + i * ((height - 120) / Math.max(1, leftNodes.length - 1)) }; });
+    rightNodes.forEach((n, i) => { positions[n] = { x: width - 180, y: 70 + i * ((height - 120) / Math.max(1, rightNodes.length - 1)) }; });
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Association network chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="24" y="18" class="viz-title">3. Network Graph of Top Association Rules</text>
+      <g stroke-linecap="round">
+        ${networkRules.map(d => {
+          const a = positions[d['Item A']] || { x: 180, y: 60 };
+          const b = positions[d['Item B']] || { x: width - 180, y: 60 };
+          const c1x = lerp(a.x, b.x, 0.35), c2x = lerp(a.x, b.x, 0.65);
+          const opacity = clamp(0.15 + d.confidence / 1.4, 0.15, 0.8);
+          return `<g>
+            <title>${esc(d['Item A'])} → ${esc(d['Item B'])} | Support ${d.support.toFixed(4)} | Confidence ${d.confidence.toFixed(4)} | Lift ${d.lift.toFixed(3)}</title>
+            <path d="M ${a.x} ${a.y} C ${c1x} ${a.y}, ${c2x} ${b.y}, ${b.x} ${b.y}" fill="none" stroke="rgba(30,136,229,${opacity})" stroke-width="${clamp(1.5 + d.lift * 0.6, 1.5, 8)}"/>
+          </g>`;
+        }).join('')}
+      </g>
+      ${nodes.map(n => {
+        const p = positions[n] || { x: 180, y: 60 };
+        const isLeft = leftNodes.includes(n);
+        return `<g>
+          <title>${esc(n)}</title>
+          <circle cx="${p.x}" cy="${p.y}" r="16" fill="${isLeft ? '#2e7d32' : '#90caf9'}" stroke="#0a2e18" stroke-width="1.2"/>
+          <text x="${p.x + (isLeft ? -24 : 24)}" y="${p.y + 4}" text-anchor="${isLeft ? 'end' : 'start'}" class="viz-label">${esc(n)}</text>
+        </g>`;
+      }).join('')}
+    </svg>`;
+  })();
+
+  const heatSvg = (() => {
+    const width = 900, height = 460, pad = { top: 40, right: 24, bottom: 80, left: 120 };
+    const topItems = [...new Set(heatRules.flatMap(r => [r['Item A'], r['Item B']]))].slice(0, 10);
+    const cell = Math.floor(Math.min((width - pad.left - pad.right), (height - pad.top - pad.bottom)) / Math.max(1, topItems.length));
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Association heatmap">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">4. Association Strength Heatmap (Lift)</text>
+      ${topItems.map((col, ci) => `<text x="${pad.left + ci * cell + cell / 2}" y="${height - 20}" text-anchor="middle" transform="rotate(-35 ${pad.left + ci * cell + cell / 2} ${height - 20})" class="viz-label">${esc(col)}</text>`).join('')}
+      ${topItems.map((row, ri) => `<text x="${pad.left - 8}" y="${pad.top + ri * cell + cell / 2 + 4}" text-anchor="end" class="viz-label">${esc(row)}</text>`).join('')}
+      ${topItems.map((row, ri) => topItems.map((col, ci) => {
+        const match = heatRules.find(r => r['Item A'] === row && r['Item B'] === col);
+        const lift = match ? match.lift : 0;
+        const t = lift ? clamp(lift / 5, 0, 1) : 0;
+        const fill = lift ? `rgb(${Math.round(255)}, ${Math.round(245 - 140 * t)}, ${Math.round(204 - 170 * t)})` : '#f6f8fb';
+        return `<g>
+          <title>${esc(row)} → ${esc(col)} | Lift ${lift ? lift.toFixed(3) : '0.000'}</title>
+          <rect x="${pad.left + ci * cell}" y="${pad.top + ri * cell}" width="${cell - 2}" height="${cell - 2}" fill="${fill}" stroke="#fff"/>
+          ${lift ? `<text x="${pad.left + ci * cell + cell / 2}" y="${pad.top + ri * cell + cell / 2 + 4}" text-anchor="middle" class="viz-value">${lift.toFixed(2)}</text>` : ''}
+        </g>`;
+      }).join('')).join('')}
+    </svg>`;
+  })();
+
+  const bubbleSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 48, left: 64 };
+    const xs = bubbleRules.map(d => d.support), ys = bubbleRules.map(d => d.confidence), lifts = bubbleRules.map(d => d.lift);
+    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const sx = v => pad.left + ((v - xMin) / (xMax - xMin || 1)) * (width - pad.left - pad.right);
+    const sy = v => height - pad.bottom - ((v - yMin) / (yMax - yMin || 1)) * (height - pad.top - pad.bottom);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Bubble plot">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">5. Bubble Plot</text>
+      <g stroke="#e8f0f8"><line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"/><line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"/></g>
+      ${bubbleRules.map(d => {
+        const x = sx(d.support), y = sy(d.confidence), r = clamp(5 + d.lift * d.lift * 1.2, 5, 24);
+        const t = (d.lift - liftMin) / (liftMax - liftMin || 1);
+        const color = `rgb(${Math.round(160 + 60 * t)}, ${Math.round(220 - 110 * t)}, ${Math.round(140 + 10 * t)})`;
+        return `<g>
+          <title>${esc(d['Item A'])} → ${esc(d['Item B'])} | Support ${d.support.toFixed(4)} | Confidence ${d.confidence.toFixed(4)} | Lift ${d.lift.toFixed(3)}</title>
+          <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" fill-opacity="0.72" stroke="#444" stroke-width="0.8"/>
+        </g>`;
+      }).join('')}
+      <text x="${(width + pad.left - pad.right) / 2}" y="${height - 10}" text-anchor="middle" class="viz-axis">Support</text>
+      <text transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle" class="viz-axis">Confidence</text>
+    </svg>`;
+  })();
+
+  const parallelSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 38, left: 64 };
+    const dims = ['support', 'confidence', 'lift'];
+    const values = dims.map(dim => parallelRules.map(d => d[dim]));
+    const mins = values.map(arr => min(arr));
+    const maxs = values.map(arr => max(arr));
+    const xFor = idx => pad.left + idx * ((width - pad.left - pad.right) / (dims.length - 1));
+    const yFor = (idx, v) => height - pad.bottom - ((v - mins[idx]) / (maxs[idx] - mins[idx] || 1)) * (height - pad.top - pad.bottom);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Parallel coordinates chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">6. Parallel Coordinates</text>
+      ${dims.map((d, i) => `<g><line x1="${xFor(i)}" y1="${pad.top}" x2="${xFor(i)}" y2="${height - pad.bottom}" stroke="#aaaaaa"/><text x="${xFor(i)}" y="${height - 8}" text-anchor="middle" class="viz-label">${esc(d.charAt(0).toUpperCase() + d.slice(1))}</text></g>`).join('')}
+      ${parallelRules.map(rule => {
+        const pts = dims.map((dim, i) => `${xFor(i)},${yFor(i, rule[dim])}`).join(' ');
+        return `<g>
+          <title>${esc(rule['Item A'])} → ${esc(rule['Item B'])} | Support ${rule.support.toFixed(4)} | Confidence ${rule.confidence.toFixed(4)} | Lift ${rule.lift.toFixed(3)}</title>
+          <polyline points="${pts}" fill="none" stroke="rgba(46,125,50,0.34)" stroke-width="1.5" />
+        </g>`;
+      }).join('')}
+    </svg>`;
+  })();
+
+  mount('chart-itemset', barSvg, 420);
+  mount('chart-scatter', scatterSvg, 420);
+  mount('chart-network', networkSvg, 460);
+  mount('chart-heatmap', heatSvg, 460);
+  mount('chart-bubble', bubbleSvg, 420);
+  mount('chart-parallel', parallelSvg, 420);
 }
 
 // ─── Lightbox ───────────────────────────────────────────
+function renderInteractiveChartsV2(data) {
+  const itemsets = (data.itemsets_data || []).slice().sort((a, b) => b.support - a.support).slice(0, 12);
+  const rankedRules = data.rules || [];
+  const networkRules = rankedRules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(',')).slice(0, 20);
+  const heatRules = rankedRules.filter(r => !String(r['Item A']).includes(',') && !String(r['Item B']).includes(','));
+  const bubbleRules = (data.rules || []).slice(0, 80);
+  const parallelRules = (data.rules || []).slice(0, 50);
+
+  const mount = (containerId, svg, height = 420) => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = `<div class="viz-shell" style="height:${height}px">${svg}</div>`;
+    initSvgPanZoom(el.querySelector('.viz-shell'));
+  };
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const max = arr => Math.max(...arr, 1);
+  const min = arr => Math.min(...arr, 0);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const fmt = (v, digits = 3) => Number(v ?? 0).toFixed(digits);
+  const itemsetTooltip = d => `<strong>${esc(d.itemset_label)}</strong><br>Support: ${fmt(d.support, 4)}<br>Items: ${d.item_count}`;
+  const ruleTooltip = d => `<strong>${esc(d['Item A'])} → ${esc(d['Item B'])}</strong><br>Support: ${fmt(d.support, 4)}<br>Confidence: ${fmt(d.confidence, 4)}<br>Lift: ${fmt(d.lift, 3)}`;
+  const shortLabel = s => {
+    const text = String(s ?? '');
+    return text.length > 15 ? `${text.slice(0, 13)}...` : text;
+  };
+  const quantile = (values, t) => {
+    if (!values.length) return 0;
+    const pos = (values.length - 1) * t;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    return values[base] + ((values[base + 1] ?? values[base]) - values[base]) * rest;
+  };
+  const selectScatterRules = (source, maxPoints = 260, bins = 12) => {
+    const cleaned = source
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) =>
+        Number.isFinite(rule.support) &&
+        Number.isFinite(rule.confidence) &&
+        Number.isFinite(rule.lift)
+      );
+    if (cleaned.length <= maxPoints) {
+      return cleaned.map(({ rule }) => rule)
+        .sort((a, b) => (a.support - b.support) || (a.confidence - b.confidence) || (b.lift - a.lift));
+    }
+
+    const supportValues = cleaned.map(({ rule }) => rule.support).sort((a, b) => a - b);
+    const confidenceValues = cleaned.map(({ rule }) => rule.confidence).sort((a, b) => a - b);
+    const supportBreaks = Array.from({ length: bins - 1 }, (_, i) => quantile(supportValues, (i + 1) / bins));
+    const confidenceBreaks = Array.from({ length: bins - 1 }, (_, i) => quantile(confidenceValues, (i + 1) / bins));
+    const binFor = (value, breaks) => breaks.findIndex(limit => value <= limit);
+    const cells = new Map();
+
+    cleaned.forEach(item => {
+      const sBin = binFor(item.rule.support, supportBreaks);
+      const cBin = binFor(item.rule.confidence, confidenceBreaks);
+      const key = `${sBin < 0 ? bins - 1 : sBin}:${cBin < 0 ? bins - 1 : cBin}`;
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(item);
+    });
+
+    const picked = [];
+    const used = new Set();
+    cells.forEach(cell => {
+      cell.sort((a, b) => b.rule.lift - a.rule.lift);
+      cell.slice(0, 2).forEach(item => {
+        picked.push(item);
+        used.add(item.index);
+      });
+    });
+
+    const remaining = cleaned
+      .filter(item => !used.has(item.index))
+      .sort((a, b) => (a.rule.support - b.rule.support) || (a.rule.confidence - b.rule.confidence) || (b.rule.lift - a.rule.lift));
+    const needed = maxPoints - picked.length;
+    if (needed > 0 && remaining.length) {
+      const step = Math.max(remaining.length / needed, 1);
+      for (let i = 0; i < Math.min(needed, remaining.length); i += 1) {
+        picked.push(remaining[Math.min(Math.floor(i * step), remaining.length - 1)]);
+      }
+    }
+
+    return picked
+      .map(({ rule }) => rule)
+      .sort((a, b) => (a.support - b.support) || (a.confidence - b.confidence) || (b.lift - a.lift))
+      .slice(0, maxPoints);
+  };
+  const scatterRules = selectScatterRules(rankedRules);
+
+  const barSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 24, left: 180 };
+    const bars = itemsets.slice().reverse();
+    const maxSupport = max(bars.map(d => d.support));
+    const rowH = (height - pad.top - pad.bottom) / Math.max(1, bars.length);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Frequent itemsets bar chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">1. Frequent Itemsets by Support</text>
+      ${bars.map((d, i) => {
+        const y = pad.top + i * rowH + 2;
+        const w = ((d.support / maxSupport) * (width - pad.left - pad.right));
+        const color = d.item_count === 1 ? '#bfd7b5' : '#2e7d32';
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="${itemsetTooltip(d)}">
+          <text x="${pad.left - 10}" y="${y + rowH * 0.68}" text-anchor="end" class="viz-label">${esc(d.itemset_label)}</text>
+          <rect x="${pad.left}" y="${y}" width="${Math.max(2, w)}" height="${rowH - 6}" rx="6" fill="${color}"/>
+          <text x="${pad.left + Math.max(8, w + 8)}" y="${y + rowH * 0.68}" class="viz-value">${d.support.toFixed(4)}</text>
+        </g>`;
+      }).join('')}
+      <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="#90caf9"/>
+    </svg>`;
+  })();
+
+  const scatterSvg = (() => {
+    const width = 980, height = 440, pad = { top: 48, right: 42, bottom: 58, left: 76 };
+    const xs = scatterRules.map(d => d.support);
+    const ys = scatterRules.map(d => d.confidence);
+    const lifts = scatterRules.map(d => d.lift);
+    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const xSpan = xMax - xMin || Math.max(xMax, 0.01);
+    const ySpan = yMax - yMin || Math.max(yMax, 0.01);
+    const xDomainMin = Math.max(0, xMin - xSpan * 0.08);
+    const xDomainMax = xMax + xSpan * 0.12;
+    const yDomainMin = Math.max(0, yMin - ySpan * 0.08);
+    const yDomainMax = Math.min(1, yMax + ySpan * 0.12);
+    const sx = v => pad.left + ((v - xDomainMin) / (xDomainMax - xDomainMin || 1)) * (width - pad.left - pad.right);
+    const sy = v => height - pad.bottom - ((v - yDomainMin) / (yDomainMax - yDomainMin || 1)) * (height - pad.top - pad.bottom);
+    const tickValues = (lo, hi, count = 5) => Array.from({ length: count }, (_, i) => lo + ((hi - lo) * i / (count - 1)));
+    const xTicks = tickValues(xDomainMin, xDomainMax, 5);
+    const yTicks = tickValues(yDomainMin, yDomainMax, 5);
+    const corr = (() => {
+      if (scatterRules.length < 2) return null;
+      const xMean = xs.reduce((sum, v) => sum + v, 0) / xs.length;
+      const yMean = ys.reduce((sum, v) => sum + v, 0) / ys.length;
+      const num = xs.reduce((sum, x, i) => sum + ((x - xMean) * (ys[i] - yMean)), 0);
+      const xDen = Math.sqrt(xs.reduce((sum, x) => sum + ((x - xMean) ** 2), 0));
+      const yDen = Math.sqrt(ys.reduce((sum, y) => sum + ((y - yMean) ** 2), 0));
+      return xDen && yDen ? num / (xDen * yDen) : null;
+    })();
+    const labeledIndexes = new Set(
+      (scatterRules.length <= 35
+        ? scatterRules.map((_, i) => i)
+        : scatterRules
+            .map((d, i) => ({ i, score: (d.lift * 2) + d.confidence + d.support }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 24)
+            .map(d => d.i))
+    );
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Support vs confidence scatter plot">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">2. Support vs Confidence Scatter Plot</text>
+      <text x="${pad.left}" y="36" class="viz-note">Numbered points identify rules; hover any point for item details.${corr === null ? '' : ` Pearson r = ${corr.toFixed(2)}.`}</text>
+      <g stroke="#e8f0f8" stroke-width="1">
+        ${xTicks.map(t => `<line x1="${sx(t)}" y1="${pad.top}" x2="${sx(t)}" y2="${height - pad.bottom}"/>`).join('')}
+        ${yTicks.map(t => `<line x1="${pad.left}" y1="${sy(t)}" x2="${width - pad.right}" y2="${sy(t)}"/>`).join('')}
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"/>
+        <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"/>
+      </g>
+      ${xTicks.map(t => `<text x="${sx(t)}" y="${height - pad.bottom + 18}" text-anchor="middle" class="viz-tick">${t.toFixed(4)}</text>`).join('')}
+      ${yTicks.map(t => `<text x="${pad.left - 10}" y="${sy(t) + 4}" text-anchor="end" class="viz-tick">${t.toFixed(3)}</text>`).join('')}
+      ${scatterRules.map((d, i) => {
+        const x = sx(d.support), y = sy(d.confidence), numbered = labeledIndexes.has(i), r = numbered ? 8.5 : 4.5;
+        const t = (d.lift - liftMin) / (liftMax - liftMin || 1);
+        const color = `rgb(${Math.round(200 - 80 * t)}, ${Math.round(220 - 140 * t)}, ${Math.round(200 - 130 * t)})`;
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="<strong>#${i + 1}</strong>${ruleTooltip(d)}">
+          <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="#173f5f" stroke-width="1"/>
+          ${numbered ? `<text x="${x}" y="${y + 3}" text-anchor="middle" class="viz-point-num">${i + 1}</text>` : ''}
+        </g>`;
+      }).join('')}
+      <text x="${(width + pad.left - pad.right) / 2}" y="${height - 10}" text-anchor="middle" class="viz-axis">Support</text>
+      <text transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle" class="viz-axis">Confidence</text>
+    </svg>`;
+  })();
+
+  const networkSvg = (() => {
+    const width = 900, height = 460;
+    const nodes = Array.from(new Set(networkRules.flatMap(r => [r['Item A'], r['Item B']])));
+    const leftNodes = nodes.filter((n, i) => i % 2 === 0);
+    const rightNodes = nodes.filter((n, i) => i % 2 === 1);
+    const positions = {};
+    leftNodes.forEach((n, i) => { positions[n] = { x: 180, y: 70 + i * ((height - 120) / Math.max(1, leftNodes.length - 1)) }; });
+    rightNodes.forEach((n, i) => { positions[n] = { x: width - 180, y: 70 + i * ((height - 120) / Math.max(1, rightNodes.length - 1)) }; });
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Association network chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="24" y="18" class="viz-title">3. Network Graph of Top Association Rules</text>
+      <g stroke-linecap="round">
+        ${networkRules.map(d => {
+          const a = positions[d['Item A']] || { x: 180, y: 60 };
+          const b = positions[d['Item B']] || { x: width - 180, y: 60 };
+          const c1x = lerp(a.x, b.x, 0.35), c2x = lerp(a.x, b.x, 0.65);
+          const opacity = clamp(0.15 + d.confidence / 1.4, 0.15, 0.8);
+          return `<g class="chart-hotspot" tabindex="0" data-tooltip="${ruleTooltip(d)}">
+            <path d="M ${a.x} ${a.y} C ${c1x} ${a.y}, ${c2x} ${b.y}, ${b.x} ${b.y}" fill="none" stroke="rgba(30,136,229,${opacity})" stroke-width="${clamp(1.5 + d.lift * 0.6, 1.5, 8)}"/>
+          </g>`;
+        }).join('')}
+      </g>
+      ${nodes.map(n => {
+        const p = positions[n] || { x: 180, y: 60 };
+        const isLeft = leftNodes.includes(n);
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="<strong>${esc(n)}</strong><br>${isLeft ? 'Antecedent hub in displayed rules' : 'Consequent node in displayed rules'}">
+          <circle cx="${p.x}" cy="${p.y}" r="16" fill="${isLeft ? '#2e7d32' : '#90caf9'}" stroke="#0a2e18" stroke-width="1.2"/>
+          <text x="${p.x + (isLeft ? -24 : 24)}" y="${p.y + 4}" text-anchor="${isLeft ? 'end' : 'start'}" class="viz-label">${esc(n)}</text>
+        </g>`;
+      }).join('')}
+    </svg>`;
+  })();
+
+  const heatSvg = (() => {
+    const width = 900, height = 460, pad = { top: 40, right: 24, bottom: 80, left: 120 };
+    const topItems = [...new Set(heatRules.flatMap(r => [r['Item A'], r['Item B']]))].slice(0, 10);
+    const cell = Math.floor(Math.min((width - pad.left - pad.right), (height - pad.top - pad.bottom)) / Math.max(1, topItems.length));
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Association heatmap">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">4. Association Strength Heatmap (Lift)</text>
+      ${topItems.map((col, ci) => `<text x="${pad.left + ci * cell + cell / 2}" y="${height - 20}" text-anchor="middle" transform="rotate(-35 ${pad.left + ci * cell + cell / 2} ${height - 20})" class="viz-label">${esc(col)}</text>`).join('')}
+      ${topItems.map((row, ri) => `<text x="${pad.left - 8}" y="${pad.top + ri * cell + cell / 2 + 4}" text-anchor="end" class="viz-label">${esc(row)}</text>`).join('')}
+      ${topItems.map((row, ri) => topItems.map((col, ci) => {
+        const match = heatRules.find(r => r['Item A'] === row && r['Item B'] === col);
+        const lift = match ? match.lift : 0;
+        const t = lift ? clamp(lift / 5, 0, 1) : 0;
+        const fill = lift ? `rgb(${Math.round(255)}, ${Math.round(245 - 140 * t)}, ${Math.round(204 - 170 * t)})` : '#f6f8fb';
+        const tooltip = match
+          ? ruleTooltip(match)
+          : `<strong>${esc(row)} → ${esc(col)}</strong><br>No direct rule in the displayed top set.`;
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="${tooltip}">
+          <rect x="${pad.left + ci * cell}" y="${pad.top + ri * cell}" width="${cell - 2}" height="${cell - 2}" fill="${fill}" stroke="#fff"/>
+          ${lift ? `<text x="${pad.left + ci * cell + cell / 2}" y="${pad.top + ri * cell + cell / 2 + 4}" text-anchor="middle" class="viz-value">${lift.toFixed(2)}</text>` : ''}
+        </g>`;
+      }).join('')).join('')}
+    </svg>`;
+  })();
+
+  const bubbleSvg = (() => {
+    const width = 1080, height = 460, pad = { top: 62, right: 390, bottom: 56, left: 78 };
+    const xs = bubbleRules.map(d => d.support);
+    const ys = bubbleRules.map(d => d.confidence);
+    const lifts = bubbleRules.map(d => d.lift);
+    const xMin = min(xs), xMax = max(xs), yMin = min(ys), yMax = max(ys), liftMin = min(lifts), liftMax = max(lifts);
+    const xSpan = xMax - xMin || Math.max(xMax, 0.01);
+    const ySpan = yMax - yMin || Math.max(yMax, 0.01);
+    const xDomainMin = Math.max(0, xMin - xSpan * 0.06);
+    const xDomainMax = xMax + xSpan * 0.12;
+    const yDomainMin = Math.max(0, yMin - ySpan * 0.1);
+    const yDomainMax = Math.min(1, yMax + ySpan * 0.16);
+    const plotRight = width - pad.right;
+    const labelX = plotRight + 34;
+    const sx = v => pad.left + ((v - xDomainMin) / (xDomainMax - xDomainMin || 1)) * (plotRight - pad.left);
+    const sy = v => height - pad.bottom - ((v - yDomainMin) / (yDomainMax - yDomainMin || 1)) * (height - pad.top - pad.bottom);
+    const bubbleRadius = lift => clamp(4.5 + lift * lift * 0.62, 4.5, 17);
+    const ranked = bubbleRules
+      .map(d => ({ ...d, __score: (d.lift * 1.8) + (d.confidence * 2.1) + (d.support * 12) }))
+      .sort((a, b) => b.__score - a.__score)
+      .slice(0, 9);
+    const calloutTop = pad.top + 20;
+    const calloutBottom = height - pad.bottom - 12;
+    const calloutStep = ranked.length > 1 ? (calloutBottom - calloutTop) / (ranked.length - 1) : 0;
+    const callouts = ranked
+      .slice()
+      .sort((a, b) => sy(a.confidence) - sy(b.confidence))
+      .map((d, i) => ({
+        x: sx(d.support),
+        y: sy(d.confidence),
+        ty: calloutTop + (i * calloutStep),
+        label: `${i + 1}. ${shortLabel(d['Item A'])} -> ${shortLabel(d['Item B'])}`,
+        rule: d,
+      }));
+
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Bubble plot">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">5. Bubble Plot</text>
+      <text x="${pad.left}" y="38" class="viz-note">Bubble size represents lift². Top rules are listed in the right callout lane.</text>
+      <g stroke="#e8f0f8"><line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}"/><line x1="${pad.left}" y1="${height - pad.bottom}" x2="${plotRight}" y2="${height - pad.bottom}"/><line x1="${plotRight + 16}" y1="${pad.top}" x2="${plotRight + 16}" y2="${height - pad.bottom}" stroke="#d8e7f6"/></g>
+      ${bubbleRules.map(d => {
+        const x = sx(d.support), y = sy(d.confidence), r = bubbleRadius(d.lift);
+        const t = (d.lift - liftMin) / (liftMax - liftMin || 1);
+        const color = `rgb(${Math.round(160 + 60 * t)}, ${Math.round(220 - 110 * t)}, ${Math.round(140 + 10 * t)})`;
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="${ruleTooltip(d)}">
+          <circle cx="${x}" cy="${y}" r="${r}" fill="${color}" fill-opacity="0.72" stroke="#444" stroke-width="0.8"/>
+        </g>`;
+      }).join('')}
+      ${callouts.map(d => `<g class="viz-callout">
+        <line x1="${d.x}" y1="${d.y}" x2="${labelX - 12}" y2="${d.ty - 4}" class="viz-callout-line"/>
+        <circle cx="${d.x}" cy="${d.y}" r="${Math.min(7, bubbleRadius(d.rule.lift) + 1)}" fill="none" stroke="#0d47a1" stroke-width="1.1"/>
+        <text x="${labelX}" y="${d.ty}" text-anchor="start" class="viz-callout-label">${esc(d.label)}</text>
+      </g>`).join('')}
+      <text x="${(plotRight + pad.left) / 2}" y="${height - 10}" text-anchor="middle" class="viz-axis">Support</text>
+      <text transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle" class="viz-axis">Confidence</text>
+    </svg>`;
+  })();
+
+  const parallelSvg = (() => {
+    const width = 900, height = 420, pad = { top: 28, right: 24, bottom: 38, left: 64 };
+    const dims = ['support', 'confidence', 'lift'];
+    const values = dims.map(dim => parallelRules.map(d => d[dim]));
+    const mins = values.map(arr => min(arr));
+    const maxs = values.map(arr => max(arr));
+    const xFor = idx => pad.left + idx * ((width - pad.left - pad.right) / (dims.length - 1));
+    const yFor = (idx, v) => height - pad.bottom - ((v - mins[idx]) / (maxs[idx] - mins[idx] || 1)) * (height - pad.top - pad.bottom);
+    return `<svg class="viz-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Parallel coordinates chart">
+      <rect width="100%" height="100%" fill="#fff"/>
+      <text x="${pad.left}" y="18" class="viz-title">6. Parallel Coordinates</text>
+      ${dims.map((d, i) => `<g><line x1="${xFor(i)}" y1="${pad.top}" x2="${xFor(i)}" y2="${height - pad.bottom}" stroke="#aaaaaa"/><text x="${xFor(i)}" y="${height - 8}" text-anchor="middle" class="viz-label">${esc(d.charAt(0).toUpperCase() + d.slice(1))}</text></g>`).join('')}
+      ${parallelRules.map(rule => {
+        const pts = dims.map((dim, i) => `${xFor(i)},${yFor(i, rule[dim])}`).join(' ');
+        return `<g class="chart-hotspot" tabindex="0" data-tooltip="${ruleTooltip(rule)}">
+          <polyline points="${pts}" fill="none" stroke="rgba(46,125,50,0.34)" stroke-width="1.5" />
+        </g>`;
+      }).join('')}
+    </svg>`;
+  })();
+
+  mount('chart-itemset', barSvg, 420);
+  mount('chart-scatter', scatterSvg, 420);
+  mount('chart-network', networkSvg, 460);
+  mount('chart-heatmap', heatSvg, 460);
+  mount('chart-bubble', bubbleSvg, 460);
+  mount('chart-parallel', parallelSvg, 420);
+  document.querySelectorAll('.viz-shell').forEach(bindChartHover);
+}
+
 function openModal(src) {
   document.getElementById('img-modal-img').src = src;
   document.getElementById('img-modal').classList.add('visible');
@@ -674,7 +1512,7 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); closeSettings(); closeFolderBrowser(); }
+  if (e.key === 'Escape') { closeModal(); closeSettings(); closeFolderBrowser(); hideSidebarCoachmark(); hideChartTooltip(); }
 });
 
 // ─── Export CSV ─────────────────────────────────────────
@@ -889,10 +1727,19 @@ function renderRecommendations(recs) {
 
 // ─── Folder Browser ──────────────────────────────────────
 let _browserCurrentPath = '';
+let _browserAllItems = [];
+let _homeDir = '';
 
 async function openFolderBrowser() {
   const startPath = document.getElementById('data_folder').value.trim() || '';
   document.getElementById('folder-modal').style.display = 'flex';
+  document.getElementById('folder-search-input').value = '';
+
+  // Get home directory first
+  if (!_homeDir && startPath) {
+    _homeDir = startPath.split(/[/\\]/).slice(0, 3).join('/');
+  }
+
   await browsePath(startPath);
 }
 
@@ -901,22 +1748,118 @@ async function browsePath(path) {
     const resp = await fetch('/browse?path=' + encodeURIComponent(path));
     const data = await resp.json();
     if (!data.ok) { showToast('Cannot open: ' + data.error); return; }
+
     _browserCurrentPath = data.current;
-    document.getElementById('folder-current-path').textContent = data.current;
-    let html = '';
-    if (data.parent) {
-      html += `<div class="folder-item folder-up" onclick="browsePath(${JSON.stringify(data.parent)})">⬆ ..</div>`;
+    _browserAllItems = data.items || [];
+
+    if (!_homeDir) {
+      _homeDir = data.current;
     }
-    (data.items || []).forEach(item => {
-      if (item.is_dir) {
-        html += `<div class="folder-item" onclick="browsePath(${JSON.stringify(item.path)})">📁 ${escHtml(item.name)}</div>`;
-      } else {
-        html += `<div class="folder-item folder-file">📄 ${escHtml(item.name)}</div>`;
-      }
-    });
-    document.getElementById('folder-list').innerHTML =
-      html || '<div style="padding:12px;color:#aaa">Empty folder</div>';
-  } catch(err) { showToast('Browse error: ' + err.message); }
+
+    document.getElementById('folder-current-path').textContent = '📁 ' + data.current;
+    buildBreadcrumb(data.current);
+    updateQuickAccessHighlight(data.current);
+    renderFolderList(_browserAllItems);
+    document.getElementById('folder-search-input').value = '';
+  } catch(err) {
+    showToast('Browse error: ' + err.message);
+  }
+}
+
+function buildBreadcrumb(fullPath) {
+  const breadcrumbEl = document.getElementById('file-explorer-breadcrumb');
+
+  let pathParts = fullPath.replace(/\\/g, '/').split('/').filter(p => p);
+  let html = '<span class="breadcrumb-item" onclick="navigateToBreadcrumb(\'' + fullPath.split(/[\\/]/)[0] + '\\')">🏠</span>';
+
+  let accumulatedPath = '';
+  for (let i = 0; i < pathParts.length; i++) {
+    accumulatedPath += (i === 0 ? (fullPath[0] === '/' ? '/' : '') : '/') + pathParts[i];
+    html += '<span class="breadcrumb-separator">›</span>';
+    html += `<span class="breadcrumb-item" onclick="navigateToBreadcrumb(${JSON.stringify(accumulatedPath)})">${escHtml(pathParts[i])}</span>`;
+  }
+
+  breadcrumbEl.innerHTML = html;
+}
+
+function navigateToBreadcrumb(path) {
+  browsePath(path);
+}
+
+function updateQuickAccessHighlight(currentPath) {
+  const items = document.querySelectorAll('.quick-access-item');
+  items.forEach(item => item.classList.remove('active'));
+}
+
+async function navigateQuickAccess(element) {
+  const pathType = element.dataset.path;
+  let path = _homeDir || '';
+
+  if (!path) {
+    showToast('Home directory not determined');
+    return;
+  }
+
+  // Build paths relative to home
+  const pathMap = {
+    home: path,
+    desktop: path + (path.endsWith('/') || path.endsWith('\\') ? '' : '/') + 'Desktop',
+    documents: path + (path.endsWith('/') || path.endsWith('\\') ? '' : '/') + 'Documents',
+    downloads: path + (path.endsWith('/') || path.endsWith('\\') ? '' : '/') + 'Downloads',
+  };
+
+  const targetPath = pathMap[pathType];
+  if (!targetPath) return;
+
+  await browsePath(targetPath);
+  element.classList.add('active');
+}
+
+function renderFolderList(items) {
+  const folderList = document.getElementById('folder-list');
+  const dirs = items.filter(i => i.is_dir);
+  const files = items.filter(i => !i.is_dir);
+
+  if (items.length === 0) {
+    folderList.innerHTML = `<div class="folder-empty-state">
+      <div class="folder-empty-icon">📁</div>
+      <div class="folder-empty-text">Empty folder</div>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+
+  dirs.forEach(item => {
+    html += `<div class="folder-item" onclick="browsePath(${JSON.stringify(item.path)})" title="${escHtml(item.path)}">
+      <span class="folder-item-icon">📁</span>
+      <span class="folder-item-name">${escHtml(item.name)}</span>
+    </div>`;
+  });
+
+  files.forEach(item => {
+    html += `<div class="folder-item folder-file" title="File - not selectable">
+      <span class="folder-item-icon">📄</span>
+      <span class="folder-item-name">${escHtml(item.name)}</span>
+    </div>`;
+  });
+
+  folderList.innerHTML = html;
+}
+
+function filterFolders(searchTerm) {
+  const term = searchTerm.toLowerCase().trim();
+
+  if (!term) {
+    renderFolderList(_browserAllItems);
+    return;
+  }
+
+  const filtered = _browserAllItems.filter(item =>
+    item.is_dir && item.name.toLowerCase().includes(term)
+  );
+
+  renderFolderList(filtered);
 }
 
 function selectCurrentFolder() {
@@ -933,6 +1876,9 @@ function closeFolderBrowser() {
 document.addEventListener('DOMContentLoaded', () => {
   // Restore cached AI insights on page load for presentation continuity
   loadCachedInsights();
+  setSidebarCollapsed(false);
+  window.addEventListener('resize', positionSidebarCoachmark);
+  document.getElementById('sidebar-toggle-btn')?.addEventListener('click', hideSidebarCoachmark);
 });
 </script>
 </body>

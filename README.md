@@ -46,14 +46,19 @@ Interactive market basket analysis web application for e-commerce data using the
    source .venv/bin/activate # macOS/Linux
    ```
 
+   Python 3.12 is recommended on Windows for the pinned pandas and matplotlib wheels.
+
 3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Download Olist dataset**
-   - Get from [Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
-   - Extract to `data/` folder (or specify custom path in UI)
+4. **Prepare a dataset**
+   - Olist still works out of the box with `olist_order_items_dataset.csv`, `olist_products_dataset.csv`, and `product_category_name_translation.csv`.
+   - Other CSV datasets are also supported. Put them in a folder and choose that folder in the UI.
+   - A generic single CSV should contain an order column such as `order_id`, `invoice`, or `transaction_id`, plus an item column such as `item_name`, `product`, `category`, or `description`.
+   - Optional columns such as `price`, `unit_price`, `amount`, `quantity`, or `qty` are used for loss-leader scoring when present.
+   - If a dataset has transaction lines with product IDs and a separate product catalog CSV, the app attempts to merge them by `product_id`, `sku`, `item_id`, or `stockcode`.
 
 ## Usage
 
@@ -61,6 +66,8 @@ Interactive market basket analysis web application for e-commerce data using the
    ```bash
    python flask_app.py
    ```
+
+   On Windows, you can also run `run_flask_app.bat` to force the project venv.
 
 2. **Open in browser**
    ```
@@ -135,6 +142,7 @@ olist_apriori_ui/
 │   ├── olist_products_dataset.csv
 │   └── product_category_name_translation.csv
 ├── requirements.txt          # Python dependencies
+├── run_flask_app.bat         # Windows launcher for the Flask app
 ├── SYSTEM_GUIDE.txt         # Presentation guide
 └── README.md
 ```

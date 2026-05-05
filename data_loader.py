@@ -1,0 +1,177 @@
+from pathlib import Path
+
+import pandas as pd
+
+
+ORDER_COLUMN_CANDIDATES = [
+    "order_id", "order id", "orderid", "invoice", "invoice_no", "invoiceno",
+    "invoice number", "transaction_id", "transaction id", "transaction",
+    "basket_id", "basket id", "receipt_id", "receipt id", "bill_no",
+    "bill number", "ticket_id", "sale_id",
+]
+
+ITEM_COLUMN_CANDIDATES = [
+    "item_name", "item name", "product_category_name_english",
+    "product_category_name", "category", "product_name", "product name",
+    "product", "item", "description", "sku_name", "article", "department",
+    "stockcode", "stock_code",
+]
+
+PRODUCT_ID_CANDIDATES = [
+    "product_id", "product id", "productid", "sku", "sku_id", "item_id",
+    "item id", "stockcode", "stock_code", "barcode", "upc",
+]
+
+PRICE_COLUMN_CANDIDATES = [
+    "price", "unit_price", "unit price", "unitprice", "item_price",
+    "item price", "sales", "sale_price", "amount", "line_total",
+    "total_price", "revenue",
+]
+
+QUANTITY_COLUMN_CANDIDATES = [
+    "quantity", "qty", "units", "unit_count", "count",
+]
+
+
+def _normal_name(name):
+    return str(name).strip().lower().replace("-", "_")
+
+
+def _column_lookup(df):
+    return {_normal_name(col): col for col in df.columns}
+
+
+def _find_column(df, candidates):
+    lookup = _column_lookup(df)
+    for candidate in candidates:
+        key = _normal_name(candidate)
+        if key in lookup:
+            return lookup[key]
+    return None
+
+
+def _read_csv(path):
+    try:
+        return pd.read_csv(path)
+    except UnicodeDecodeError:
+        return pd.read_csv(path, encoding="latin1")
+
+
+def _standardize_transactions(df, source_name, allow_product_id_as_item=False):
+    order_col = _find_column(df, ORDER_COLUMN_CANDIDATES)
+    item_col = _find_column(df, ITEM_COLUMN_CANDIDATES)
+    if not item_col and allow_product_id_as_item:
+        item_col = _find_column(df, PRODUCT_ID_CANDIDATES)
+    price_col = _find_column(df, PRICE_COLUMN_CANDIDATES)
+    quantity_col = _find_column(df, QUANTITY_COLUMN_CANDIDATES)
+
+    if not order_col or not item_col:
+        return None
+
+    out = pd.DataFrame({
+        "order_id": df[order_col],
+        "item_name": df[item_col],
+    })
+    out["price"] = pd.to_numeric(df[price_col], errors="coerce") if price_col else 1.0
+    out["quantity"] = (
+        pd.to_numeric(df[quantity_col], errors="coerce").fillna(1)
+        if quantity_col else 1
+    )
+    out["order_item_id"] = [f"{source_name}:{i}" for i in range(len(out))]
+    return _clean_standardized(out)
+
+
+def _clean_standardized(df):
+    df = df.copy()
+    df["order_id"] = df["order_id"].astype(str).str.strip()
+    df["item_name"] = df["item_name"].astype(str).str.strip()
+    df = df.replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
+    df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(1.0)
+    df["quantity"] = pd.to_numeric(df.get("quantity", 1), errors="coerce").fillna(1)
+    df = df.dropna(subset=["order_id", "item_name"])
+    return df[df["item_name"].astype(str).str.len() > 0]
+
+
+def _load_olist(data_dir):
+    oi_path = data_dir / "olist_order_items_dataset.csv"
+    p_path = data_dir / "olist_products_dataset.csv"
+    t_path = data_dir / "product_category_name_translation.csv"
+    if not (oi_path.exists() and p_path.exists() and t_path.exists()):
+        return None
+
+    order_items = _read_csv(oi_path)
+    products = _read_csv(p_path)
+    translation = _read_csv(t_path)
+
+    df = order_items.merge(products, on="product_id", how="left")
+    df = df.merge(translation, on="product_category_name", how="left")
+    df["item_name"] = df["product_category_name_english"].fillna(df["product_category_name"])
+    df["quantity"] = 1
+    return _clean_standardized(df)
+
+
+def _load_merged_product_dataset(csv_paths):
+    frames = {path: _read_csv(path) for path in csv_paths}
+    for tx_path, tx_df in frames.items():
+        order_col = _find_column(tx_df, ORDER_COLUMN_CANDIDATES)
+        tx_product_col = _find_column(tx_df, PRODUCT_ID_CANDIDATES)
+        if not order_col or not tx_product_col:
+            continue
+
+        for product_path, product_df in frames.items():
+            if product_path == tx_path:
+                continue
+            product_col = _find_column(product_df, PRODUCT_ID_CANDIDATES)
+            item_col = _find_column(product_df, ITEM_COLUMN_CANDIDATES)
+            if not product_col or not item_col:
+                continue
+
+            merged = tx_df.merge(
+                product_df[[product_col, item_col]].drop_duplicates(product_col),
+                left_on=tx_product_col,
+                right_on=product_col,
+                how="left",
+            )
+            standardized = _standardize_transactions(merged, tx_path.name)
+            if standardized is not None and not standardized.empty:
+                return standardized
+    return None
+
+
+def load_transaction_data(data_dir):
+    data_dir = Path(data_dir)
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Data folder does not exist: {data_dir}")
+
+    olist_df = _load_olist(data_dir)
+    if olist_df is not None and not olist_df.empty:
+        return olist_df
+
+    csv_paths = sorted(data_dir.glob("*.csv"))
+    if not csv_paths:
+        raise FileNotFoundError(f"No CSV files found in data folder: {data_dir}")
+
+    merged = _load_merged_product_dataset(csv_paths)
+    if merged is not None and not merged.empty:
+        return merged
+
+    single_file_matches = []
+    for path in csv_paths:
+        df = _read_csv(path)
+        standardized = _standardize_transactions(
+            df,
+            path.name,
+            allow_product_id_as_item=True,
+        )
+        if standardized is not None and not standardized.empty:
+            single_file_matches.append(standardized)
+
+    if single_file_matches:
+        return pd.concat(single_file_matches, ignore_index=True)
+
+    supported = (
+        "Could not detect transaction columns. Provide CSV data with an order "
+        "column such as order_id/invoice/transaction_id and an item column such "
+        "as item_name/product/category/description. A price column is optional."
+    )
+    raise ValueError(supported)
