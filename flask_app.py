@@ -2,7 +2,26 @@ import io
 import base64
 import textwrap
 import json
+import sys
+import os
 from pathlib import Path
+
+
+PROJECT_DIR = Path(__file__).parent
+LOCAL_VENV_PYTHON = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
+
+
+def _running_in_local_venv() -> bool:
+    try:
+        return Path(sys.executable).resolve() == LOCAL_VENV_PYTHON.resolve()
+    except OSError:
+        return False
+
+
+if LOCAL_VENV_PYTHON.exists() and not _running_in_local_venv():
+    # Re-launch with the project virtualenv instead of mixing global Python
+    # with packages installed for a different interpreter version.
+    os.execv(str(LOCAL_VENV_PYTHON), [str(LOCAL_VENV_PYTHON), __file__, *sys.argv[1:]])
 
 try:
     from google import genai as _genai_sdk
@@ -21,10 +40,20 @@ from matplotlib.colors import Normalize
 
 from flask import Flask, render_template, request, jsonify
 from mlxtend.frequent_patterns import apriori, association_rules
+from data_loader import load_transaction_data
 
 app = Flask(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -98,23 +127,7 @@ def wrap(text, width=16):
 # ─────────────────────────────────────────────
 
 def load_data(data_dir: Path):
-    oi_path  = data_dir / "olist_order_items_dataset.csv"
-    p_path   = data_dir / "olist_products_dataset.csv"
-    t_path   = data_dir / "product_category_name_translation.csv"
-
-    missing = [f.name for f in [oi_path, p_path, t_path] if not f.exists()]
-    if missing:
-        raise FileNotFoundError(f"Missing files in data folder: {', '.join(missing)}")
-
-    oi = pd.read_csv(oi_path)
-    p  = pd.read_csv(p_path)
-    t  = pd.read_csv(t_path)
-
-    df = oi.merge(p, on="product_id", how="left")
-    df = df.merge(t, on="product_category_name", how="left")
-    df["item_name"] = df["product_category_name_english"].fillna(df["product_category_name"])
-    df = df.dropna(subset=["order_id", "item_name"])
-    return df
+    return load_transaction_data(data_dir)
 
 
 # ─────────────────────────────────────────────
@@ -140,24 +153,79 @@ def chart_itemsets(fi_df):
     return fig_to_b64(fig)
 
 
+def scatter_sample_rules(rules_df, max_points=260, bins=12):
+    """Use a representative spread of rules instead of only the top lift slice."""
+    if rules_df is None or rules_df.empty or len(rules_df) <= max_points:
+        return rules_df.copy() if rules_df is not None else rules_df
+
+    plot = rules_df.copy().reset_index(drop=True)
+    bin_count = min(bins, max(2, len(plot)))
+    plot["_support_bin"] = pd.qcut(
+        plot["support"].rank(method="first"),
+        q=bin_count,
+        labels=False,
+        duplicates="drop",
+    )
+    plot["_confidence_bin"] = pd.qcut(
+        plot["confidence"].rank(method="first"),
+        q=bin_count,
+        labels=False,
+        duplicates="drop",
+    )
+
+    representatives = (
+        plot.sort_values(["_support_bin", "_confidence_bin", "lift"],
+                         ascending=[True, True, False])
+            .groupby(["_support_bin", "_confidence_bin"], dropna=False)
+            .head(2)
+    )
+
+    if len(representatives) < max_points:
+        remaining = plot.drop(index=representatives.index, errors="ignore")
+        needed = max_points - len(representatives)
+        if not remaining.empty:
+            remaining = remaining.sort_values(["support", "confidence", "lift"])
+            step = max(len(remaining) / needed, 1)
+            fill_indexes = [remaining.index[min(int(i * step), len(remaining) - 1)]
+                            for i in range(min(needed, len(remaining)))]
+            representatives = pd.concat([representatives, remaining.loc[fill_indexes]])
+
+    return (
+        representatives.drop(columns=["_support_bin", "_confidence_bin"], errors="ignore")
+        .drop_duplicates()
+        .sort_values(["support", "confidence", "lift"], ascending=[True, True, False])
+        .head(max_points)
+    )
+
+
 def chart_scatter(rules_df):
-    plot = rules_df.head(200).copy()
-    sizes = plot["lift"].clip(lower=1).mul(140)
+    plot = scatter_sample_rules(rules_df)
 
     fig, ax = plt.subplots(figsize=(11, 6), dpi=110)
     sc = ax.scatter(plot["support"], plot["confidence"],
-                    s=sizes, c=plot["lift"], cmap="YlGnBu",
+                    s=48, c=plot["lift"], cmap="YlGnBu",
                     alpha=0.72, edgecolors="#173f5f", linewidths=0.6)
-    for _, row in plot.nlargest(8, ["lift", "confidence"]).iterrows():
-        ax.annotate(f"{row['Item A']} → {row['Item B']}",
-                    (row["support"], row["confidence"]),
-                    textcoords="offset points", xytext=(6, 6), fontsize=8,
-                    bbox={"boxstyle": "round,pad=0.2", "fc": "white",
-                          "ec": "#cccccc", "alpha": 0.85})
+    label_indexes = (
+        plot.index if len(plot) <= 35
+        else plot.assign(_score=plot["lift"] * 2 + plot["confidence"] + plot["support"])
+                 .nlargest(24, "_score").index
+    )
+    for label_no, idx in enumerate(plot.index, start=1):
+        if idx not in label_indexes:
+            continue
+        row = plot.loc[idx]
+        ax.annotate(str(label_no), (row["support"], row["confidence"]),
+                    textcoords="offset points", xytext=(5, 5), fontsize=7,
+                    weight="bold", color="#0b2f4a")
     ax.set_title("2. Support vs Confidence Scatter Plot", fontsize=14, pad=10)
     ax.set_xlabel("Support")
     ax.set_ylabel("Confidence")
     ax.grid(linestyle="--", alpha=0.25)
+    corr = plot["support"].corr(plot["confidence"]) if len(plot) > 1 else None
+    if pd.notna(corr):
+        ax.text(0.01, 0.98, f"Numbered rules shown - Pearson r = {corr:.2f}",
+                transform=ax.transAxes, ha="left", va="top", fontsize=8,
+                color="#607d9c")
     fig.colorbar(sc, ax=ax).set_label("Lift")
     fig.tight_layout()
     return fig_to_b64(fig)
@@ -253,16 +321,16 @@ def chart_heatmap(rules_df):
 
 def chart_bubble(rules_df):
     plot   = rules_df.head(80).copy()
-    sizes  = (plot["lift"] ** 2) * 90
+    sizes  = (plot["lift"] ** 2) * 48
 
-    fig, ax = plt.subplots(figsize=(11, 6), dpi=110)
+    fig, ax = plt.subplots(figsize=(12, 6), dpi=110)
     sc = ax.scatter(plot["support"], plot["confidence"],
                     s=sizes, c=plot["lift"], cmap="RdYlGn",
                     alpha=0.75, edgecolors="#444444", linewidths=0.5)
     for _, row in plot.nlargest(7, "lift").iterrows():
         ax.annotate(f"{row['Item A']} → {row['Item B']}",
                     (row["support"], row["confidence"]),
-                    textcoords="offset points", xytext=(8, 8), fontsize=8,
+                    textcoords="offset points", xytext=(18, 8), fontsize=8,
                     bbox={"boxstyle": "round,pad=0.25", "fc": "white",
                           "ec": "#bbbbbb", "alpha": 0.9})
     ax.set_title(
@@ -271,6 +339,14 @@ def chart_bubble(rules_df):
     ax.set_xlabel("Support")
     ax.set_ylabel("Confidence")
     ax.grid(linestyle="--", alpha=0.2)
+    if not plot.empty:
+        x_min, x_max = plot["support"].min(), plot["support"].max()
+        x_span = max(x_max - x_min, 0.001)
+        ax.set_xlim(x_min - x_span * 0.04, x_max + x_span * 0.45)
+        y_min, y_max = plot["confidence"].min(), plot["confidence"].max()
+        y_span = max(y_max - y_min, 0.001)
+        ax.set_ylim(max(0, y_min - y_span * 0.12),
+                    min(1, y_max + y_span * 0.22))
     fig.colorbar(sc, ax=ax).set_label("Lift")
     fig.tight_layout()
     return fig_to_b64(fig)
@@ -510,7 +586,7 @@ def run_analysis(params):
     price_summary = (
         df.groupby("item_name")
         .agg(average_price=("price", "mean"),
-             total_units_sold=("order_item_id", "count"),
+             total_units_sold=("quantity", "sum"),
              total_revenue=("price", "sum"))
         .reset_index()
     )
@@ -532,8 +608,12 @@ def run_analysis(params):
     if frequent_itemsets.empty:
         raise ValueError("No frequent itemsets found. Try lowering min_support.")
 
-    rules = association_rules(frequent_itemsets, metric="confidence",
-                               min_threshold=min_confidence)
+    rules = association_rules(
+        frequent_itemsets,
+        num_itemsets=basket.shape[0],
+        metric="confidence",
+        min_threshold=min_confidence,
+    )
     if rules.empty:
         raise ValueError("No association rules found. Try lowering min_confidence.")
 
@@ -674,7 +754,7 @@ def interpret():
     if not _rotator.available():
         msg = ("Gemini not ready \u2014 "
                + ("add API keys in the sidebar." if GEMINI_AVAILABLE
-                  else "run: pip install google-generativeai, then add keys."))
+                  else "run: pip install google-genai, then add keys."))
         return jsonify({"ok": False, "error": msg}), 400
     try:
         data   = request.get_json(force=True)
